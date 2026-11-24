@@ -1,0 +1,99 @@
+---
+import { ui } from '../i18n/fr';
+import { site } from '../data/site';
+const links = [
+  { href: '/#projets', label: ui.nav.projects },
+  { href: '/#parcours', label: ui.nav.path },
+  { href: '/#a-propos', label: ui.nav.about },
+  { href: '/#contact', label: ui.nav.contact },
+];
+---
+
+<header class="header">
+  <div class="container header__inner">
+    <a href="/" class="logo" aria-label="Mattéo Bombrun, accueil">
+      <span>MB</span>
+    </a>
+    <nav aria-label="Navigation principale">
+      <ul>
+        {
+          links.map((l) => (
+            <li>
+              <a href={l.href}>{l.label}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+    <a class="cv" href={site.cv} download>{ui.nav.cv}</a>
+  </div>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgb(14 17 22 / 0.78);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgb(42 49 60 / 0.6);
+  }
+  .header__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 4rem;
+  }
+  .logo {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.25rem 0.5rem;
+    letter-spacing: 0.05em;
+  }
+  .logo:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  nav {
+    margin-left: auto;
+  }
+  ul {
+    display: flex;
+    gap: var(--space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.9375rem;
+  }
+  nav a:hover {
+    color: var(--text);
+  }
+  .cv {
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 0.3rem 0.75rem;
+  }
+  .cv:hover {
+    background: var(--accent-soft);
+  }
+  @media (max-width: 640px) {
+    nav {
+      display: none;
+    }
+    .cv {
+      margin-left: auto;
+    }
+  }
+</style>

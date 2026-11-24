@@ -1,0 +1,28 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/Hero.astro';
+import KeyFigures from '../components/KeyFigures.astro';
+import ProjectGrid from '../components/ProjectGrid.astro';
+import Timeline from '../components/Timeline.astro';
+import Skills from '../components/Skills.astro';
+import About from '../components/About.astro';
+import Contact from '../components/Contact.astro';
+import muzelle from '../assets/photos/muzelle.jpg';
+import montBlanc from '../assets/photos/mont_blanc.jpg';
+import montCook from '../assets/photos/mont_cook.jpg';
+
+const projects = (
+  await getCollection('projects', (p) => p.id.startsWith('fr/') && !p.data.draft)
+).sort((a, b) => a.data.order - b.data.order);
+---
+
+<BaseLayout>
+  <Hero background={muzelle} />
+  <KeyFigures />
+  <ProjectGrid projects={projects} />
+  <Timeline background={montBlanc} credit="Bouquetin face au massif du Mont-Blanc · © Mattéo Bombrun" />
+  <Skills />
+  <About background={montCook} credit="Aoraki / Mont Cook, Nouvelle-Zélande · © Mattéo Bombrun" />
+  <Contact />
+</BaseLayout>

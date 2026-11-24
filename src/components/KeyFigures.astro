@@ -1,0 +1,64 @@
+---
+import { keyFigures } from '../data/site';
+---
+
+<section class="figures container reveal" aria-label="Chiffres clés">
+  <ul>
+    {
+      keyFigures.map((f) => (
+        <li>
+          <span class="value">{f.value}</span>
+          <span class="label">{f.label}</span>
+          <span class="source">{f.source}</span>
+        </li>
+      ))
+    }
+  </ul>
+</section>
+
+<style>
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: var(--space-3);
+  }
+  li + li {
+    border-left: 1px solid var(--border);
+  }
+  .value {
+    font-family: var(--font-mono);
+    font-size: var(--step-2);
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .label {
+    font-size: 0.9375rem;
+  }
+  .source {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  @media (max-width: 860px) {
+    ul {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    li:nth-child(3) {
+      border-left: 0;
+    }
+    li:nth-child(n + 3) {
+      border-top: 1px solid var(--border);
+    }
+  }
+</style>

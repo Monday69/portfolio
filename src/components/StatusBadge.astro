@@ -1,0 +1,40 @@
+---
+import { ui } from '../i18n/fr';
+import type { CollectionEntry } from 'astro:content';
+interface Props {
+  status: CollectionEntry<'projects'>['data']['status'];
+}
+const { status } = Astro.props;
+---
+
+<span class:list={['badge', `badge--${status}`]}>{ui.status[status]}</span>
+
+<style>
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--surface);
+  }
+  .badge--internship {
+    color: var(--accent);
+    border-color: rgb(125 211 252 / 0.4);
+  }
+  .badge--production {
+    color: var(--glow);
+    border-color: rgb(245 158 107 / 0.45);
+  }
+  .badge--production::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--glow);
+  }
+</style>

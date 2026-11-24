@@ -1,0 +1,32 @@
+---
+import { site } from '../data/site';
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <p>© {year} {site.name}</p>
+    <p class="mono">
+      Fait avec Astro · hébergé sur mon VPS ·
+      <a href={`${site.github}/portfolio`}>code source</a>
+    </p>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--border);
+    padding-block: var(--space-4);
+    color: var(--muted);
+    font-size: var(--step--1);
+  }
+  .footer__inner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .mono {
+    font-family: var(--font-mono);
+  }
+</style>

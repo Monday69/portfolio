@@ -1,0 +1,56 @@
+---
+/**
+ * Courbes de niveau décoratives, générées au build (aucun JS côté client).
+ * Déterministe : le même dessin à chaque build.
+ */
+interface Props {
+  class?: string;
+  seed?: number;
+}
+const { class: className, seed = 1 } = Astro.props;
+
+const width = 1200;
+const height = 800;
+const peaks = [
+  { x: 860 + seed * 13, y: 260, rings: 11, step: 34 },
+  { x: 240, y: 640 - seed * 21, rings: 8, step: 38 },
+];
+
+function ring(cx: number, cy: number, r: number, k: number): string {
+  const points: string[] = [];
+  const n = 96;
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * Math.PI * 2;
+    const wobble =
+      1 +
+      0.13 * Math.sin(3 * t + k * 0.55 + seed) +
+      0.07 * Math.sin(5 * t - k * 0.3 + seed * 2) +
+      0.04 * Math.sin(9 * t + seed * 3);
+    const x = cx + Math.cos(t) * r * wobble * 1.25;
+    const y = cy + Math.sin(t) * r * wobble * 0.85;
+    points.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`);
+  }
+  return points.join('') + 'Z';
+}
+
+const paths = peaks.flatMap((p) =>
+  Array.from({ length: p.rings }, (_, k) => ({
+    d: ring(p.x, p.y, (k + 1) * p.step, k),
+    major: (k + 1) % 4 === 0,
+  })),
+);
+---
+
+<svg
+  class={className}
+  viewBox={`0 0 ${width} ${height}`}
+  preserveAspectRatio="xMidYMid slice"
+  aria-hidden="true"
+  focusable="false"
+>
+  {
+    paths.map((p) => (
+      <path d={p.d} fill="none" stroke="currentColor" stroke-width={p.major ? 1.2 : 0.6} />
+    ))
+  }
+</svg>

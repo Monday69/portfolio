@@ -1,0 +1,200 @@
+---
+import { Picture } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import StatusBadge from './StatusBadge.astro';
+import Topo from './Topo.astro';
+import { ui } from '../i18n/fr';
+
+interface Props {
+  project: CollectionEntry<'projects'>;
+  slug: string;
+  large?: boolean;
+}
+const { project, slug, large = false } = Astro.props;
+const { data } = project;
+---
+
+<article
+  class:list={['card', 'reveal', { 'card--large': large }]}
+  data-cats={data.categories.join(' ')}
+>
+  <div class="card__media">
+    {
+      data.cover ? (
+        <Picture
+          src={data.cover}
+          formats={['avif', 'webp']}
+          widths={large ? [640, 1100] : [480, 800]}
+          sizes={large ? '(max-width: 860px) 100vw, 600px' : '(max-width: 860px) 100vw, 360px'}
+          alt={data.coverAlt ?? ''}
+        />
+      ) : (
+        <div class="placeholder" aria-hidden="true">
+          <Topo class="placeholder__topo" seed={data.order} />
+          <span>{ui.categories[data.categories[0]!]}</span>
+        </div>
+      )
+    }
+  </div>
+
+  <div class="card__body">
+    <div class="card__meta">
+      <StatusBadge status={data.status} />
+      {data.period && <span class="period">{data.period}</span>}
+    </div>
+    <h3>
+      <a href={`/projets/${slug}/`} class="card__link">{data.title}</a>
+    </h3>
+    <p class="tagline">{data.tagline}</p>
+    {
+      data.metric && (
+        <p class="metric">
+          <strong>{data.metric.value}</strong> {data.metric.label}
+        </p>
+      )
+    }
+    <ul class="stack" aria-label={ui.project.stack}>
+      {
+        data.stack.slice(0, large ? 6 : 4).map((s) => (
+          <li class="tag">{s}</li>
+        ))
+      }
+    </ul>
+  </div>
+</article>
+
+<style>
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition:
+      border-color 0.25s,
+      transform 0.25s;
+  }
+  .card:hover,
+  .card:focus-within {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+  }
+  .card[hidden] {
+    display: none;
+  }
+  .card__media {
+    aspect-ratio: 16 / 10;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .card__media :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+  }
+  .placeholder {
+    position: relative;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(70% 80% at 70% 30%, rgb(125 211 252 / 0.08), transparent);
+  }
+  .placeholder :global(.placeholder__topo) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: var(--accent);
+    opacity: 0.18;
+  }
+  .placeholder span {
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 0.25rem 0.625rem;
+  }
+  .card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: var(--space-3);
+    flex: 1;
+  }
+  .card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .period {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  h3 {
+    font-size: var(--step-1);
+  }
+  .card__link {
+    color: var(--text);
+    text-decoration: none;
+  }
+  /* Toute la carte est cliquable */
+  .card__link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .metric {
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+  .metric strong {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 1rem;
+  }
+  .stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    list-style: none;
+    padding: 0;
+    margin: auto 0 0;
+  }
+
+  /* Grand format : image à gauche, texte à droite */
+  @media (min-width: 861px) {
+    .card--large {
+      flex-direction: row;
+    }
+    .card--large .card__media {
+      flex: 0 0 56%;
+      aspect-ratio: auto;
+      min-height: 320px;
+      border-bottom: 0;
+      border-right: 1px solid var(--border);
+    }
+    .card--large .card__body {
+      padding: var(--space-4);
+      justify-content: center;
+    }
+    .card--large h3 {
+      font-size: var(--step-2);
+    }
+    .card--large .stack {
+      margin-top: var(--space-1);
+    }
+  }
+</style>
