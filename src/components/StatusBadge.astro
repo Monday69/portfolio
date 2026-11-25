@@ -37,4 +37,64 @@ const { status } = Astro.props;
     border-radius: 50%;
     background: var(--glow);
   }
+  /* Projet privé : code fermé — bordure pointillée, marqueur carré éteint */
+  .badge--private {
+    color: var(--muted);
+    border-style: dashed;
+    border-color: var(--border);
+    background: transparent;
+  }
+  .badge--private::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--muted);
+    opacity: 0.55;
+  }
+  /* Projet de semestre : cadre plein, marqueur losange */
+  .badge--school {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: rgb(125 211 252 / 0.28);
+  }
+  .badge--school::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    opacity: 0.7;
+    transform: rotate(45deg);
+  }
+  /* Projet personnel : sobre, sans marqueur */
+  .badge--personal {
+    color: var(--muted);
+    border-color: var(--border);
+    background: var(--surface);
+  }
+  /* En cours : accent + pastille pulsée (neutralisée par prefers-reduced-motion) */
+  .badge--ongoing {
+    color: var(--accent);
+    border-color: rgb(125 211 252 / 0.4);
+    background: var(--accent-soft);
+  }
+  .badge--ongoing::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: badge-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes badge-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgb(125 211 252 / 0.45);
+    }
+    50% {
+      opacity: 0.65;
+      box-shadow: 0 0 0 4px rgb(125 211 252 / 0);
+    }
+  }
 </style>

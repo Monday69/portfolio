@@ -1,0 +1,509 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  cover: ImageMetadata;
+  coverAlt: string;
+}
+
+const { cover, coverAlt } = Astro.props;
+
+const cards = [
+  {
+    zone: 'Clayette haute',
+    title: 'Inventaire temps réel',
+    text: 'Chaque produit scanné entre dans le jumeau numérique : quantités, emplacement exact, historique des ajouts par colocataire.',
+  },
+  {
+    zone: 'Clayette centrale',
+    title: 'Alertes péremption',
+    text: 'Les dates de péremption remontent du frigo vers le HUD : notifications anti-gaspi avant la DLC, tri par urgence.',
+  },
+  {
+    zone: 'Bacs légumes',
+    title: 'Sync PostgreSQL & Courses',
+    text: 'Une sortie de stock met à jour la liste de courses partagée en base : la maison se réapprovisionne sans y penser.',
+  },
+];
+---
+
+<section class="fridge" data-fridge aria-label="Aperçu 3D interactif de l'inventaire ColocOS">
+  <div class="stage" data-stage>
+    <div class="fallback">
+      <Picture
+        src={cover}
+        formats={['avif', 'webp']}
+        widths={[800, 1400, 2200]}
+        sizes="(max-width: 1160px) 100vw, 1120px"
+        alt={coverAlt}
+        loading="lazy"
+      />
+      <p class="fallback__note">
+        Aperçu statique — la scène 3D interactive se charge sur grand écran.
+      </p>
+    </div>
+
+    <canvas class="canvas" data-canvas aria-hidden="true"></canvas>
+    <p class="status" data-status role="status">chargement du modèle 3D…</p>
+
+    <ol class="cards" data-cards>
+      {
+        cards.map((card, i) => (
+          <li class="card" data-card>
+            <span class="card__index">
+              {String(i + 1).padStart(2, '0')} / {String(cards.length).padStart(2, '0')} ·{' '}
+              {card.zone}
+            </span>
+            <h3 class="card__title">{card.title}</h3>
+            <p class="card__text">{card.text}</p>
+          </li>
+        ))
+      }
+    </ol>
+
+    <p class="hint" data-hint>défilez pour ouvrir le frigo</p>
+  </div>
+</section>
+
+<script>
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+  import gsap from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  const MODEL_URL = '/models/fridge.glb';
+  /** Ouverture de la porte : −100°, comme dans ColocOS (`-Math.PI / 1.8`). */
+  const DOOR_ANGLE = -Math.PI / 1.8;
+  /** Course des bacs à légumes vers l'avant (unités scène). */
+  const CRISPER_SLIDE = 0.25;
+
+  function supportsWebGL(): boolean {
+    try {
+      const probe = document.createElement('canvas');
+      return Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'));
+    } catch {
+      return false;
+    }
+  }
+
+  const section = document.querySelector<HTMLElement>('[data-fridge]');
+  const stage = section?.querySelector<HTMLElement>('[data-stage]') ?? null;
+  const canvas = section?.querySelector<HTMLCanvasElement>('[data-canvas]') ?? null;
+  const statusEl = section?.querySelector<HTMLElement>('[data-status]') ?? null;
+  const hintEl = section?.querySelector<HTMLElement>('[data-hint]') ?? null;
+  const cardEls = section
+    ? Array.from(section.querySelectorAll<HTMLElement>('[data-card]'))
+    : [];
+
+  if (section && stage && canvas) {
+    // Alias non-nullable : les fermetures (start/build) perdent le narrowing.
+    const root = section;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const narrowQuery = window.matchMedia('(max-width: 640px)');
+
+    let teardown: (() => void) | null = null;
+
+    const isEligible = (): boolean =>
+      !motionQuery.matches && !narrowQuery.matches && supportsWebGL();
+
+    const showFallback = (message?: string): void => {
+      root.classList.remove('is-live', 'is-ready');
+      if (statusEl) {
+        statusEl.hidden = !message;
+        statusEl.textContent = message ?? '';
+      }
+    };
+
+    const start = (): void => {
+      // ── Rendu ────────────────────────────────────────────────────────────
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearAlpha(0);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.02;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 100);
+      const holder = new THREE.Group();
+      scene.add(holder);
+
+      // ── Éclairage studio doux + lumière intérieure chaude ────────────────
+      scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x0b0f14, 1.1));
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
+      keyLight.position.set(2.6, 3.4, 3.2);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x9ec9ea, 0.9);
+      fillLight.position.set(-3.2, 1.6, -2.4);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.55);
+      rimLight.position.set(-0.6, 1.2, -4);
+      scene.add(rimLight);
+
+      const interiorLight = new THREE.PointLight(0xffb877, 0, 2.6, 2);
+      interiorLight.position.set(0, 0.05, 0.1);
+      holder.add(interiorLight);
+
+      root.classList.add('is-live');
+
+      // ── Chargement différé du GLB (5,5 Mo) ───────────────────────────────
+      const loader = new GLTFLoader();
+      let timeline: gsap.core.Timeline | null = null;
+      let disposed = false;
+
+      const size = new THREE.Vector3(1, 1.6, 1);
+      const baseDistance = { value: 4 };
+
+      const frameCamera = (): number => {
+        const fov = THREE.MathUtils.degToRad(camera.fov);
+        const distH = size.y / 2 / Math.tan(fov / 2);
+        const distW = size.x / 2 / Math.tan(fov / 2) / Math.max(camera.aspect, 0.35);
+        return Math.max(distH, distW) * 1.32;
+      };
+
+      const resize = (): void => {
+        const width = stage.clientWidth;
+        const height = stage.clientHeight;
+        if (!width || !height) return;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+
+      const observer = new ResizeObserver(resize);
+      observer.observe(stage);
+      resize();
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          io.disconnect();
+          loader.load(
+            MODEL_URL,
+            (gltf) => {
+              if (disposed) return;
+              build(gltf.scene);
+            },
+            (event) => {
+              if (!statusEl || !event.total) return;
+              const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+              statusEl.textContent = `chargement du modèle 3D… ${percent} %`;
+            },
+            () => {
+              if (disposed) return;
+              showFallback('Aperçu 3D indisponible — image statique affichée.');
+              root.classList.remove('is-live');
+            },
+          );
+        },
+        { rootMargin: '400px 0px' },
+      );
+      io.observe(root);
+
+      // ── Mise en scène du modèle ──────────────────────────────────────────
+      function build(model: THREE.Object3D): void {
+        holder.add(model);
+        holder.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(model);
+        box.getSize(size);
+        const center = box.getCenter(new THREE.Vector3());
+
+        // Le GLB Onshape est décalé (≈ x −0.84, y 1.35, z −0.50) : on le recentre
+        model.position.sub(center);
+        holder.updateMatrixWorld(true);
+
+        // Gond de la porte : arête (min.x, centre y, min.z) du panneau
+        const door = model.getObjectByName('door_fridge_panel');
+        const bins: THREE.Object3D[] = [];
+        model.traverse((node) => {
+          if (/^door_bin_(left|right)/.test(node.name) || node.name === 'door_bin_bottom') {
+            bins.push(node);
+          }
+        });
+
+        let pivot: THREE.Group | null = null;
+        if (door) {
+          const doorBox = new THREE.Box3().setFromObject(door);
+          const hinge = new THREE.Vector3(
+            doorBox.min.x,
+            (doorBox.min.y + doorBox.max.y) / 2,
+            doorBox.min.z,
+          );
+
+          pivot = new THREE.Group();
+          pivot.position.copy(hinge);
+          holder.add(pivot);
+
+          // `attach` préserve la transformation monde : porte + bacs suivent le gond
+          pivot.attach(door);
+          for (const bin of bins) pivot.attach(bin);
+        }
+
+        // Bacs à légumes : coulissement avant (+Z)
+        const drawers = ['drawer_crisper_left', 'drawer_crisper_right']
+          .map((name) => model.getObjectByName(name))
+          .filter((node): node is THREE.Object3D => Boolean(node))
+          .map((node) => ({ node, z: node.position.z }));
+
+        holder.rotation.y = -0.5;
+        holder.position.x = -size.x * 0.17;
+
+        baseDistance.value = frameCamera();
+        camera.position.set(0, size.y * 0.04, baseDistance.value * 1.08);
+        camera.lookAt(0, 0, 0);
+        resize();
+
+        // ── Timeline pilotée par le scroll (0 → 100 %) ───────────────────
+        timeline = gsap.timeline({
+          defaults: { ease: 'none' },
+          scrollTrigger: {
+            trigger: root,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: 1,
+            invalidateOnRefresh: true,
+          },
+        });
+
+        // 0 → 25 % : rotation de présentation et léger recul
+        timeline.to(holder.rotation, { y: 0.06, duration: 25 }, 0);
+        timeline.to(camera.position, { z: baseDistance.value * 1.0, duration: 25 }, 0);
+        if (hintEl) timeline.to(hintEl, { autoAlpha: 0, duration: 6 }, 18);
+
+        // 25 → 60 % : ouverture de la porte et rapprochement
+        if (pivot) {
+          timeline.to(pivot.rotation, { y: DOOR_ANGLE, duration: 35, ease: 'power2.inOut' }, 25);
+        }
+        timeline.to(camera.position, { z: baseDistance.value * 0.96, duration: 35 }, 25);
+        timeline.to(camera.position, { y: size.y * 0.045, duration: 35 }, 25);
+        timeline.to(interiorLight, { intensity: 1.2, duration: 20 }, 30);
+
+        // 60 → 90 % : bacs à légumes puis cartes d'information
+        for (const drawer of drawers) {
+          timeline.to(drawer.node.position, { z: drawer.z + CRISPER_SLIDE, duration: 18 }, 60);
+        }
+        cardEls.forEach((card, index) => {
+          timeline?.fromTo(
+            card,
+            { autoAlpha: 0, y: 26 },
+            { autoAlpha: 1, y: 0, duration: 9, ease: 'power2.out' },
+            62 + index * 9,
+          );
+        });
+
+        // 90 → 100 % : maintien avant de rendre le scroll
+        timeline.to({}, { duration: 10 }, 90);
+
+        root.classList.add('is-ready');
+        if (statusEl) statusEl.hidden = true;
+
+        ScrollTrigger.refresh();
+      }
+
+      renderer.setAnimationLoop(() => {
+        camera.lookAt(0, 0, 0);
+        renderer.render(scene, camera);
+      });
+
+      // ── Nettoyage ────────────────────────────────────────────────────────
+      const dispose = (): void => {
+        if (disposed) return;
+        disposed = true;
+        timeline?.scrollTrigger?.kill();
+        timeline?.kill();
+        observer.disconnect();
+        io.disconnect();
+        renderer.setAnimationLoop(null);
+        scene.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          mesh.geometry?.dispose();
+          const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+          if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+          else material?.dispose();
+        });
+        renderer.dispose();
+        renderer.forceContextLoss();
+        root.classList.remove('is-live', 'is-ready');
+      };
+
+      teardown = dispose;
+      window.addEventListener('pagehide', dispose, { once: true });
+      document.addEventListener('astro:before-swap', dispose, { once: true });
+    };
+
+    const onPreferenceChange = (): void => {
+      if (isEligible()) {
+        if (statusEl) statusEl.hidden = false;
+        start();
+      } else {
+        teardown?.();
+        teardown = null;
+        showFallback();
+      }
+    };
+
+    if (isEligible()) {
+      motionQuery.addEventListener('change', onPreferenceChange);
+      narrowQuery.addEventListener('change', onPreferenceChange);
+      start();
+    } else {
+      showFallback();
+    }
+  }
+</script>
+
+<style>
+  .fridge {
+    position: relative;
+    margin-top: var(--space-2);
+  }
+  .fridge.is-live {
+    height: 320vh;
+  }
+
+  .stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .fridge.is-live .stage {
+    position: sticky;
+    top: 4.5rem;
+    height: calc(100svh - 5rem);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      radial-gradient(120% 90% at 28% 12%, rgb(125 211 252 / 0.07), transparent 62%),
+      radial-gradient(90% 80% at 78% 88%, rgb(245 158 107 / 0.05), transparent 60%),
+      var(--surface);
+  }
+
+  .fallback {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .fallback :global(img) {
+    width: 100%;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .fallback__note {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+  }
+  .fridge.is-live .fallback {
+    display: none;
+  }
+
+  .canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .fridge.is-ready .canvas {
+    opacity: 1;
+  }
+  .fridge:not(.is-live) .canvas,
+  .fridge:not(.is-live) .cards,
+  .fridge:not(.is-live) .hint,
+  .fridge:not(.is-live) .status {
+    display: none;
+  }
+
+  .status {
+    position: absolute;
+    inset: auto 0 auto 0;
+    bottom: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .cards {
+    position: absolute;
+    top: 50%;
+    right: var(--space-3);
+    transform: translateY(-50%);
+    width: min(360px, 40%);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-2);
+    pointer-events: none;
+  }
+  .card {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: var(--space-2) var(--space-3);
+    opacity: 0;
+    visibility: hidden;
+  }
+  .card__index {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .card__title {
+    font-size: var(--step-0);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0.35rem 0 0.4rem;
+  }
+  .card__text {
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .hint {
+    position: absolute;
+    left: 50%;
+    bottom: var(--space-2);
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  @media (max-width: 860px) {
+    .cards {
+      width: min(300px, 46%);
+    }
+    .card {
+      padding: var(--space-1) var(--space-2);
+    }
+    .card__text {
+      font-size: 0.8125rem;
+    }
+  }
+</style>
