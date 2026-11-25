@@ -17,6 +17,7 @@ const { data } = project;
 <article
   class:list={['card', 'reveal', { 'card--large': large }]}
   data-cats={data.categories.join(' ')}
+  data-project-card
 >
   <div class="card__media">
     {
@@ -38,30 +39,79 @@ const { data } = project;
   </div>
 
   <div class="card__body">
-    <div class="card__meta">
+    <div class="card__meta" data-part="meta">
       <StatusBadge status={data.status} />
       {data.period && <span class="period">{data.period}</span>}
     </div>
-    <h3>
+    <h3 data-part="title">
       <a href={`/projets/${slug}/`} class="card__link">{data.title}</a>
     </h3>
-    <p class="tagline">{data.tagline}</p>
+    <p class="tagline" data-part="tagline">{data.tagline}</p>
     {
       data.metric && (
-        <p class="metric">
+        <p class="metric" data-part="metric">
           <strong>{data.metric.value}</strong> {data.metric.label}
         </p>
       )
     }
-    <ul class="stack" aria-label={ui.project.stack}>
-      {
-        data.stack.slice(0, large ? 6 : 4).map((s) => (
-          <li class="tag">{s}</li>
-        ))
-      }
+    <ul class="stack" aria-label={ui.project.stack} data-part="stack">
+      {data.stack.slice(0, large ? 6 : 4).map((s) => <li class="tag">{s}</li>)}
     </ul>
   </div>
 </article>
+
+<script>
+  /**
+   * Cascade interne d'une carte projet : en-tête, titre, accroche, métrique, stack.
+   * La carte est pilotée par `ProjectGrid` via trois évènements :
+   *   - `projectcard:prepare`  : masque les blocs avant l'entrée en scène
+   *   - `projectcard:activate` : joue la cascade (stagger 0.08)
+   *   - `projectcard:reset`    : rend les blocs à leur état statique
+   * Rien n'est chargé ni joué sous `prefers-reduced-motion: reduce`.
+   */
+  const cards = document.querySelectorAll<HTMLElement>('[data-project-card]');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (cards.length > 0 && !reduced) {
+    const parts = (card: HTMLElement) => [...card.querySelectorAll<HTMLElement>('[data-part]')];
+
+    let loading: Promise<typeof import('gsap').gsap> | null = null;
+    const loadGsap = () => (loading ??= import('gsap').then((module) => module.gsap));
+
+    cards.forEach((card) => {
+      card.addEventListener('projectcard:prepare', () => {
+        const blocks = parts(card);
+        if (blocks.length === 0) return;
+        void loadGsap().then((gsap) => gsap.set(blocks, { y: 14, opacity: 0 }));
+      });
+
+      card.addEventListener('projectcard:activate', () => {
+        const blocks = parts(card);
+        if (blocks.length === 0) return;
+        void loadGsap().then((gsap) =>
+          gsap.fromTo(
+            blocks,
+            { y: 14, opacity: 0 },
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.5,
+              ease: 'power2.out',
+              stagger: 0.08,
+              overwrite: 'auto',
+            },
+          ),
+        );
+      });
+
+      card.addEventListener('projectcard:reset', () => {
+        const blocks = parts(card);
+        if (blocks.length === 0) return;
+        void loadGsap().then((gsap) => gsap.set(blocks, { clearProps: 'transform,opacity' }));
+      });
+    });
+  }
+</script>
 
 <style>
   .card {
@@ -180,9 +230,11 @@ const { data } = project;
       flex-direction: row;
     }
     .card--large .card__media {
-      flex: 0 0 56%;
-      aspect-ratio: auto;
-      min-height: 320px;
+      flex: 0 0 52%;
+      /* Le ratio des visuels reste verrouillé, même en grand format */
+      aspect-ratio: 16 / 10;
+      align-self: center;
+      min-height: 0;
       border-bottom: 0;
       border-right: 1px solid var(--border);
     }

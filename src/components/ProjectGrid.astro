@@ -28,10 +28,18 @@ const others = projects.filter((p) => !p.data.featured);
         ))
       }
     </div>
+  </div>
 
-    <div class="featured">
-      {featured.map((p) => <ProjectCard project={p} slug={slugOf(p)} large />)}
+  <!-- Hors du .container : le rail épinglé occupe toute la largeur de la fenêtre -->
+  <div class="featured" data-featured>
+    <div class="featured__viewport" data-featured-viewport>
+      <div class="featured__track" data-featured-track>
+        {featured.map((p) => <ProjectCard project={p} slug={slugOf(p)} large />)}
+      </div>
     </div>
+  </div>
+
+  <div class="container">
     <div class="grid">
       {others.map((p) => <ProjectCard project={p} slug={slugOf(p)} />)}
     </div>
@@ -39,18 +47,183 @@ const others = projects.filter((p) => !p.data.featured);
 </section>
 
 <script>
-  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-filter]');
-  const cards = document.querySelectorAll<HTMLElement>('[data-cats]');
-  buttons.forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const filter = btn.dataset.filter ?? 'all';
-      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
-      cards.forEach((card) => {
+  const filterButtons = document.querySelectorAll<HTMLButtonElement>('[data-filter]');
+  const filterables = document.querySelectorAll<HTMLElement>('[data-cats]');
+
+  const featuredRoot = document.querySelector<HTMLElement>('[data-featured]');
+  const viewport = featuredRoot?.querySelector<HTMLElement>('[data-featured-viewport]');
+  const track = featuredRoot?.querySelector<HTMLElement>('[data-featured-track]');
+  const cardEls = track ? [...track.querySelectorAll<HTMLElement>('[data-project-card]')] : [];
+
+  // Branché plus bas si (et seulement si) GSAP est réellement chargé.
+  let afterFilter: () => void = () => {};
+
+  filterButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const filter = button.dataset.filter ?? 'all';
+      filterButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      filterables.forEach((card) => {
         const cats = card.dataset.cats?.split(' ') ?? [];
         card.hidden = filter !== 'all' && !cats.includes(filter);
       });
-    }),
-  );
+      afterFilter();
+    });
+  });
+
+  if (featuredRoot && viewport && track && cardEls.length > 0) {
+    const root = featuredRoot;
+    const rail = viewport;
+    const railTrack = track;
+
+    const mq = window.matchMedia('(min-width: 861px) and (prefers-reduced-motion: no-preference)');
+    type KillableTween = {
+      kill: () => void;
+      scrollTrigger?: { kill: (revert?: boolean) => void };
+    };
+
+    let started: Promise<void> | null = null;
+
+    const setup = async () => {
+      const [{ gsap }, { ScrollTrigger }] = await Promise.all([
+        import('gsap'),
+        import('gsap/ScrollTrigger'),
+      ]);
+      gsap.registerPlugin(ScrollTrigger);
+
+      let tween: KillableTween | null = null;
+      let visible: HTMLElement[] = [];
+      const revealed = new Set<HTMLElement>();
+
+      const notify = (card: HTMLElement, name: string) => card.dispatchEvent(new CustomEvent(name));
+
+      /**
+       * Métriques mesurées sur la mise en page (offsetLeft/offsetWidth ignorent
+       * les transforms) : largeur de carte, pas entre deux cartes, et décalage
+       * qui amène la première carte pile au centre du rail.
+       */
+      const metrics = () => {
+        const first = visible[0];
+        const second = visible[1];
+        const cardW = first ? first.offsetWidth : rail.clientWidth;
+        const gap = first && second ? Math.max(0, second.offsetLeft - first.offsetLeft - cardW) : 0;
+        return { step: cardW + gap, start: (rail.clientWidth - cardW) / 2 };
+      };
+
+      const teardown = () => {
+        tween?.scrollTrigger?.kill(true);
+        tween?.kill();
+        tween = null;
+        visible = [];
+        revealed.clear();
+        root.classList.remove('is-featured-scroll');
+        gsap.set(railTrack, { clearProps: 'transform' });
+        gsap.set(cardEls, { clearProps: 'transform,opacity' });
+        cardEls.forEach((card) => notify(card, 'projectcard:reset'));
+      };
+
+      const build = () => {
+        teardown();
+        if (!mq.matches) return;
+
+        visible = cardEls.filter((card) => !card.hidden);
+        if (visible.length < 2) return;
+
+        root.classList.add('is-featured-scroll');
+
+        visible.forEach((card) => {
+          // Neutralise l'apparition générique (.reveal) : la carte est pilotée ici.
+          card.classList.add('is-visible');
+          notify(card, 'projectcard:prepare');
+        });
+
+        const total = visible.length - 1;
+
+        // Un seul timeline scrubbé : translation ET mise à l'échelle restent
+        // parfaitement solidaires de la position de scroll.
+        const tl = gsap.timeline({
+          scrollTrigger: {
+            trigger: root,
+            start: 'top top+=72',
+            end: () => `+=${metrics().step * total}`,
+            pin: true,
+            scrub: 1,
+            invalidateOnRefresh: true,
+            onUpdate: (self) => {
+              const progress = self.progress * total;
+
+              // Une carte révèle son texte dès qu'elle commence à entrer :
+              // la carte voisine n'apparaît jamais « vide ».
+              const limit = progress + 0.9;
+              visible.forEach((card, index) => {
+                if (index > limit || revealed.has(card)) return;
+                revealed.add(card);
+                notify(card, 'projectcard:activate');
+              });
+            },
+          },
+        });
+
+        tween = tl;
+
+        // Départ centré sur la première carte, puis un pas complet (carte + gap)
+        // par projet : chacune s'arrête exactement au centre du rail.
+        tl.fromTo(
+          railTrack,
+          { x: () => metrics().start },
+          {
+            x: () => metrics().start - metrics().step * total,
+            ease: 'none',
+            duration: total,
+          },
+          0,
+        );
+
+        visible.forEach((card, index) => {
+          // La carte quitte le centre : elle rétrécit et s'estompe.
+          if (index < total) {
+            tl.fromTo(
+              card,
+              { scale: 1, opacity: 1 },
+              { scale: 0.92, opacity: 0.45, ease: 'none', duration: 1 },
+              index,
+            );
+          }
+          // La carte prend la place centrale.
+          if (index > 0) {
+            tl.fromTo(
+              card,
+              { scale: 0.92, opacity: 0.45 },
+              { scale: 1, opacity: 1, ease: 'none', duration: 1 },
+              index - 1,
+            );
+          }
+        });
+
+        // La première carte est déjà à sa place : sa cascade part immédiatement.
+        const first = visible[0];
+        if (first) {
+          revealed.add(first);
+          notify(first, 'projectcard:activate');
+        }
+      };
+
+      afterFilter = () => {
+        build();
+        ScrollTrigger.refresh();
+      };
+
+      mq.addEventListener('change', build);
+      build();
+    };
+
+    const start = () => (started ??= setup());
+
+    // GSAP n'est téléchargé que lorsqu'il peut réellement servir.
+    if (mq.matches) void start();
+    mq.addEventListener('change', (event) => {
+      if (event.matches) void start();
+    });
+  }
 </script>
 
 <style>
@@ -79,10 +252,77 @@ const others = projects.filter((p) => !p.data.featured);
     border-color: var(--accent);
     background: var(--accent-soft);
   }
+
+  /* Empilement vertical par défaut : mobile, reduce, sans JS */
   .featured {
+    width: min(100% - 2 * var(--gutter), var(--container));
+    margin-inline: auto;
+  }
+  .featured__track {
     display: grid;
     gap: var(--space-3);
   }
+
+  /* Mode rail horizontal plein écran : la classe n'est posée que par le script desktop */
+  .featured.is-featured-scroll {
+    width: 100%;
+    margin-inline: 0;
+    height: calc(100svh - 5.5rem);
+    max-height: 820px;
+    min-height: 540px;
+    overflow: hidden;
+  }
+  .featured.is-featured-scroll .featured__viewport {
+    height: 100%;
+    overflow: hidden;
+  }
+  .featured.is-featured-scroll .featured__track {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-3);
+    height: 100%;
+    will-change: transform;
+  }
+
+  /* Carte quasi plein écran dans le rail */
+  .featured.is-featured-scroll :global(.card--large) {
+    flex: 0 0 auto;
+    width: min(90vw, 1360px);
+    min-width: min(90vw, 1360px);
+    height: 100%;
+    transform-origin: center center;
+    /* La translation/échelle est gérée par GSAP : pas de transition CSS concurrente */
+    transition: border-color 0.25s;
+  }
+  .featured.is-featured-scroll :global(.card--large .card__media) {
+    flex: 0 0 54%;
+    align-self: stretch;
+    aspect-ratio: auto;
+    height: 100%;
+    min-height: 0;
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+  .featured.is-featured-scroll :global(.card--large .card__body) {
+    flex: 1;
+    justify-content: space-evenly;
+    padding: clamp(1.75rem, 3vw, 3.5rem);
+    gap: clamp(0.875rem, 1.4vw, 1.5rem);
+  }
+  .featured.is-featured-scroll :global(.card--large h3) {
+    font-size: var(--step-2);
+  }
+  .featured.is-featured-scroll :global(.card--large .tagline) {
+    font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
+    max-width: 44ch;
+  }
+  .featured.is-featured-scroll :global(.card--large .metric) {
+    font-size: 1rem;
+  }
+  .featured.is-featured-scroll :global(.card--large .metric strong) {
+    font-size: var(--step-1);
+  }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));

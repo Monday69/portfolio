@@ -69,7 +69,13 @@ const { background, credit } = Astro.props;
     z-index: -1;
     background:
       radial-gradient(ellipse 58% 50% at 30% 40%, rgb(14 17 22 / 0.8) 40%, transparent 100%),
-      linear-gradient(90deg, rgb(14 17 22 / 0.6) 0%, rgb(14 17 22 / 0.45) 40%, rgb(14 17 22 / 0.1) 70%, transparent 100%),
+      linear-gradient(
+        90deg,
+        rgb(14 17 22 / 0.6) 0%,
+        rgb(14 17 22 / 0.45) 40%,
+        rgb(14 17 22 / 0.1) 70%,
+        transparent 100%
+      ),
       linear-gradient(180deg, var(--bg) 0%, transparent 10%, transparent 90%, var(--bg) 100%);
   }
   .parcours :global(.parcours__bg) {
@@ -105,7 +111,14 @@ const { background, credit } = Astro.props;
       object-position: 35% 100%;
     }
     .parcours__veil {
-      background: linear-gradient(180deg, var(--bg) 0%, rgb(14 17 22 / 0.85) 10%, rgb(14 17 22 / 0.85) 70%, rgb(14 17 22 / 0.1) 82%, transparent 100%);
+      background: linear-gradient(
+        180deg,
+        var(--bg) 0%,
+        rgb(14 17 22 / 0.85) 10%,
+        rgb(14 17 22 / 0.85) 70%,
+        rgb(14 17 22 / 0.1) 82%,
+        transparent 100%
+      );
     }
   }
   .timeline {
@@ -203,6 +216,23 @@ const { background, credit } = Astro.props;
     .period {
       text-align: left;
       padding: 0;
+    }
+  }
+
+  /*
+   * Écran vertical : hauteur plafonnée et cadrage vers le haut pour que la photo
+   * paysage reste lisible à sa largeur. Rendu paysage inchangé.
+   */
+  @media (orientation: portrait) {
+    .parcours {
+      min-height: auto;
+      padding-block: clamp(3rem, 6vw, 5rem);
+    }
+    .parcours :global(.parcours__bg) {
+      object-position: center 25%;
+    }
+    .credit {
+      bottom: 0.75rem;
     }
   }
 </style>

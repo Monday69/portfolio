@@ -42,7 +42,11 @@ const { background } = Astro.props;
         {
           site.availability.map((part, i) => (
             <>
-              {i > 0 && <span class="sep" aria-hidden="true">·</span>}
+              {i > 0 && (
+                <span class="sep" aria-hidden="true">
+                  ·
+                </span>
+              )}
               <span>{part}</span>
             </>
           ))
@@ -202,21 +206,27 @@ const { background } = Astro.props;
       min-height: auto;
     }
     .hero__veil {
-      background: linear-gradient(180deg, rgb(14 17 22 / 0.15), rgb(14 17 22 / 0.6) 45%, rgb(14 17 22 / 0.8) 75%, var(--bg));
+      background: linear-gradient(
+        180deg,
+        rgb(14 17 22 / 0.15),
+        rgb(14 17 22 / 0.6) 45%,
+        rgb(14 17 22 / 0.8) 75%,
+        var(--bg)
+      );
     }
     .credit {
-    position: absolute;
-    left: var(--gutter);
-    right: var(--gutter);
-    bottom: 1.25rem;
-    text-align: right;
-    line-height: 1.4;
-    text-shadow: 0 1px 6px rgb(14 17 22 / 0.9);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: rgb(230 237 243 / 0.7);
-  }
-  .hero__inner {
+      position: absolute;
+      left: var(--gutter);
+      right: var(--gutter);
+      bottom: 1.25rem;
+      text-align: right;
+      line-height: 1.4;
+      text-shadow: 0 1px 6px rgb(14 17 22 / 0.9);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: rgb(230 237 243 / 0.7);
+    }
+    .hero__inner {
       grid-template-columns: 1fr;
       gap: var(--space-4);
     }
@@ -225,6 +235,25 @@ const { background } = Astro.props;
     }
     .hero__portrait :global(img) {
       width: 128px;
+    }
+  }
+
+  /*
+   * Écran vertical (y compris un 1080p avec zoom 125 / 150 %, dont la largeur
+   * CSS descend sous 769px) : la section reprend un rapport proche de la photo
+   * paysage, ce qui évite le recadrage massif. `min-height: min-content`
+   * empêche tout rognage quand le contenu dépasse la cible (téléphone portrait).
+   */
+  @media (orientation: portrait) {
+    .hero {
+      min-height: min-content;
+      height: clamp(400px, 58vw, 640px);
+    }
+    .hero :global(.hero__bg) {
+      object-position: center 25%;
+    }
+    .credit {
+      bottom: 0.75rem;
     }
   }
 </style>
