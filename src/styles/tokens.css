@@ -11,6 +11,7 @@
   --accent: #7dd3fc; /* bleu glacier */
   --accent-soft: rgb(125 211 252 / 0.12);
   --glow: #f59e6b; /* alpenglow, à utiliser avec parcimonie */
+  --frame: #0b0f14; /* fond des fenêtres de captures, plus profond que --bg */
 
   /* Typographie */
   --font-sans: 'Inter Variable', system-ui, sans-serif;

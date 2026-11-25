@@ -1,0 +1,716 @@
+---
+import { Picture } from 'astro:assets';
+import registre from '../assets/projects/columboo/registre.png';
+import auditConsole from '../assets/projects/columboo/audit-console.png';
+import triage from '../assets/projects/columboo/triage.png';
+import cockpit from '../assets/projects/columboo/cockpit-agents.png';
+import validation from '../assets/projects/columboo/validation.png';
+
+/**
+ * Columboo — grand format piloté au scroll.
+ * À gauche l'écran réel du produit (captures natives 2880 × 1800), à droite un
+ * accordéon vertical de 5 étapes. Aucun WebGL : HTML + CSS + GSAP.
+ */
+
+const steps = [
+  {
+    index: '01',
+    title: 'Registre & Ingestion',
+    url: 'columboo.local/registre',
+    image: registre,
+    alt: 'Registre des audits : liste des projets, état des correctifs et couverture PCI-DSS',
+    text: 'Le dépôt arrive en ZIP ou par clone GitLab, jamais par un service tiers. Les manifestes sont mis en cache : la reprise d’un audit est immédiate.',
+    tech: ['Ingestion locale · ZIP / GitLab', 'Cache manifestes < 200 ms', 'Aucun envoi hors réseau'],
+  },
+  {
+    index: '02',
+    title: 'Audit sémantique temps réel',
+    url: 'columboo.local/audit',
+    image: auditConsole,
+    alt: 'Console d’audit sémantique : progression bloc par bloc et failles détectées en direct',
+    text: 'Le fichier est découpé en FunctionChunks de 4 096 tokens, en-tête uses compris. Le flux SSE pousse chaque verdict pendant que l’Auditor travaille.',
+    tech: ['FunctionChunks 4 096 tokens', 'KV-Cache −35 %', 'SSE < 10 ms', 'BugTraceAI-Apex 26B'],
+  },
+  {
+    index: '03',
+    title: 'Triage humain Avant/Après',
+    url: 'columboo.local/triage',
+    image: triage,
+    alt: 'Écran de triage : diff avant/après sur le code Delphi, décision de l’ingénieur',
+    text: 'Chaque faille arrive avec son diff et sa justification ; les fichiers sains sont filtrés en amont. Aucune réécriture ne part sans accord humain.',
+    tech: ['Filtrage des fichiers sains', 'Validation par lot', 'Zéro réécriture sans accord'],
+  },
+  {
+    index: '04',
+    title: 'Usine à patchs multi-agents',
+    url: 'columboo.local/cockpit',
+    image: cockpit,
+    alt: 'Cockpit multi-agents : plan du Planner, patch du Developer et verdict du Reviewer',
+    text: 'Le GpuQueueManager sérialise l’inférence : un seul modèle de 16 Go sur 24 Go de mémoire unifiée. Le Reviewer renvoie la critique quand la passe ne compile pas.',
+    tech: ['GpuQueueManager · 1 modèle 16/24 Go', 'Planner → Developer → Reviewer Q8_0', 'Correction E2003 + EditHunk'],
+  },
+  {
+    index: '05',
+    title: 'Compilation KVM & Certification',
+    url: 'columboo.local/validation',
+    image: validation,
+    alt: 'Écran de validation : fichiers corrigés prêts pour la compilation en VM et registre de conformité',
+    text: 'Le correctif part dans une VM Windows 7 isolée de 3,5 Go qui exécute DCC32 en moins d’une seconde. Le cartouche et le Grand Livre scellent la traçabilité.',
+    tech: ['POST /compile → VM KVM 3,5 Go', 'DCC32 < 1 s', 'Cartouche PF-8F4A2C', 'Grand Livre · 94 % ≤ 2 passes'],
+  },
+];
+
+const widths = [640, 960, 1280, 1920, 2880];
+---
+
+<section class="case" data-columboo aria-label="Aperçu du produit Columboo et de sa télémétrie backend">
+  <div class="stage" data-stage>
+    <header class="hud">
+      <div class="hud__brand">
+        <svg class="hud__mark" viewBox="0 0 40 44" fill="none" aria-hidden="true">
+          <path
+            d="M20 2 37 9v15c0 9.7-7.3 16.2-17 19C10.3 40.2 3 33.7 3 24V9L20 2Z"
+            stroke="currentColor"
+            stroke-opacity=".8"
+            stroke-width="1.8"></path>
+          <path
+            d="M15.5 15 10 22l5.5 7M24.5 15 30 22l-5.5 7"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"></path>
+        </svg>
+        <span class="hud__name">Columboo</span>
+        <span class="hud__sep">/</span>
+        <span class="hud__meta">BH Technologies · SecOps souverain</span>
+      </div>
+      <div class="gpu" data-gpu>
+        <span class="gpu__dot"></span>
+        <span class="gpu__hw">Mac Mini M6 · 24 Go</span>
+        <b class="gpu__state" data-gpu-state>IDLE</b>
+      </div>
+    </header>
+
+    <div class="split">
+      <!-- Colonne gauche : l'écran réel -->
+      <div class="app">
+        <div class="app__bar">
+          <span class="app__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="app__url" data-url>columboo.local/registre</span>
+          <span class="app__badge" data-badge>01 / 05</span>
+        </div>
+
+        <div class="app__screen">
+          {
+            steps.map((step, i) => (
+              <figure class="shot" data-shot={i} class:list={['shot', i === 0 ? 'is-first' : '']}>
+                <Picture
+                  src={step.image}
+                  formats={['avif', 'webp']}
+                  quality={95}
+                  widths={widths}
+                  sizes="(max-width: 860px) 94vw, 66vw"
+                  alt={step.alt}
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                />
+              </figure>
+            ))
+          }
+        </div>
+
+        <p class="app__caption" data-caption>01 · Registre &amp; Ingestion</p>
+      </div>
+
+      <!-- Colonne droite : accordéon des 5 étapes -->
+      <aside class="side">
+        <p class="side__eyebrow">Sous le capot · Backend &amp; Infra</p>
+
+        <ol class="acc" data-acc>
+          {
+            steps.map((step, i) => (
+              <li class="acc__item" data-acc-item={i} class:list={['acc__item', i === 0 ? 'is-open' : '']}>
+                <button class="acc__head" type="button" data-acc-head={i} aria-expanded={i === 0 ? 'true' : 'false'}>
+                  <span class="acc__num">{step.index}</span>
+                  <span class="acc__title">{step.title}</span>
+                </button>
+                <div class="acc__panel">
+                  <div class="acc__inner">
+                    <p class="acc__text">{step.text}</p>
+                    <ul class="tech">
+                      {step.tech.map((item) => (
+                        <li class="tech__item">{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Repli : les cinq étapes empilées, sans sticky -->
+  <div class="static">
+    {
+      steps.map((step) => (
+        <article class="s-step">
+          <figure class="s-step__shot">
+            <Picture
+              src={step.image}
+              formats={['avif', 'webp']}
+              quality={95}
+              widths={[640, 960, 1280, 1920]}
+              sizes="(max-width: 860px) 94vw, 760px"
+              alt={step.alt}
+              loading="lazy"
+            />
+          </figure>
+          <div class="s-step__body">
+            <p class="s-step__tag">
+              {step.index} · {step.title}
+            </p>
+            <p class="s-step__text">{step.text}</p>
+            <ul class="tech">
+              {step.tech.map((item) => (
+                <li class="tech__item">{item}</li>
+              ))}
+            </ul>
+          </div>
+        </article>
+      ))
+    }
+  </div>
+</section>
+
+<script>
+  import gsap from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  /** Bornes des 5 phases, en % du scroll. */
+  const BOUNDS = [0, 20, 40, 60, 80];
+  /** Bandes où le GPU travaille réellement. */
+  const GPU_BANDS: Array<[number, number]> = [
+    [21, 39],
+    [61, 79],
+    [86, 97],
+  ];
+
+  const section = document.querySelector<HTMLElement>('[data-columboo]');
+
+  if (section) {
+    const root = section;
+    const stage = root.querySelector<HTMLElement>('[data-stage]');
+    const gpuState = root.querySelector<HTMLElement>('[data-gpu-state]');
+    const gpuPill = root.querySelector<HTMLElement>('[data-gpu]');
+    const url = root.querySelector<HTMLElement>('[data-url]');
+    const badge = root.querySelector<HTMLElement>('[data-badge]');
+    const caption = root.querySelector<HTMLElement>('[data-caption]');
+
+    const shots = Array.from(root.querySelectorAll<HTMLElement>('[data-shot]'));
+    const items = Array.from(root.querySelectorAll<HTMLElement>('[data-acc-item]'));
+    const heads = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-acc-head]'));
+
+    const meta = items.map((item, i) => ({
+      index: String(i + 1).padStart(2, '0'),
+      title: item.querySelector('.acc__title')?.textContent ?? '',
+      url: [
+        'columboo.local/registre',
+        'columboo.local/audit',
+        'columboo.local/triage',
+        'columboo.local/cockpit',
+        'columboo.local/validation',
+      ][i] ?? '',
+    }));
+
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const narrowQuery = window.matchMedia('(max-width: 860px)');
+
+    let teardown: (() => void) | null = null;
+    let timeline: gsap.core.Timeline | null = null;
+    let active = -1;
+
+    const setGpu = (busy: boolean): void => {
+      if (!gpuState || !gpuPill) return;
+      gpuState.textContent = busy ? 'COLUMBOO 16 Go' : 'IDLE';
+      gpuPill.classList.toggle('is-busy', busy);
+    };
+
+    const setActive = (i: number): void => {
+      if (i === active) return;
+      active = i;
+      items.forEach((item, k) => item.classList.toggle('is-open', k === i));
+      heads.forEach((head, k) => head.setAttribute('aria-expanded', k === i ? 'true' : 'false'));
+      if (url) url.textContent = meta[i]?.url ?? '';
+      if (badge) badge.textContent = `${meta[i]?.index ?? ''} / 05`;
+      if (caption) caption.textContent = `${meta[i]?.index ?? ''} · ${meta[i]?.title ?? ''}`;
+    };
+
+    const update = (progress: number): void => {
+      const pct = progress * 100;
+      setGpu(GPU_BANDS.some(([a, b]) => pct >= a && pct < b));
+      let index = 0;
+      for (let i = BOUNDS.length - 1; i >= 0; i--) {
+        if (pct >= BOUNDS[i]) {
+          index = i;
+          break;
+        }
+      }
+      setActive(index);
+    };
+
+    function dispose(): void {
+      timeline?.scrollTrigger?.kill();
+      timeline?.kill();
+      timeline = null;
+      motionQuery.removeEventListener('change', onPreferenceChange);
+      narrowQuery.removeEventListener('change', onPreferenceChange);
+      window.removeEventListener('pagehide', dispose);
+      document.removeEventListener('astro:before-swap', dispose);
+      root.classList.remove('is-live');
+      setGpu(false);
+      active = -1;
+    }
+
+    function onPreferenceChange(): void {
+      if (motionQuery.matches || narrowQuery.matches) {
+        teardown?.();
+        teardown = null;
+      } else if (!teardown) {
+        start();
+        teardown = dispose;
+      }
+    }
+
+    function goTo(index: number): void {
+      const rect = root.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const span = rect.height - window.innerHeight;
+      const target = BOUNDS[index] ?? 0;
+      window.scrollTo({
+        top: top + (span * target) / 100 + 6,
+        behavior: motionQuery.matches ? 'auto' : 'smooth',
+      });
+    }
+
+    function start(): void {
+      root.classList.add('is-live');
+
+      shots.forEach((shot, i) => gsap.set(shot, { autoAlpha: i === 0 ? 1 : 0 }));
+      setActive(0);
+      setGpu(false);
+
+      const tl = gsap.timeline({
+        defaults: { ease: 'none' },
+        scrollTrigger: {
+          trigger: root,
+          start: 'top top',
+          end: 'bottom bottom',
+          scrub: 1,
+          invalidateOnRefresh: true,
+          onUpdate: (self) => update(self.progress),
+        },
+      });
+      timeline = tl;
+
+      for (let i = 1; i < shots.length; i++) {
+        const at = BOUNDS[i];
+        tl.to(shots[i - 1], { autoAlpha: 0, duration: 5 }, at - 2.5);
+        tl.to(shots[i], { autoAlpha: 1, duration: 5 }, at - 2.5);
+      }
+
+      // La timeline doit durer 100 : les positions sont en % du scroll.
+      tl.to({}, { duration: 15 }, 85);
+
+      heads.forEach((head, i) => {
+        head.addEventListener('click', () => goTo(i));
+      });
+
+      window.addEventListener('pagehide', dispose, { once: true });
+      document.addEventListener('astro:before-swap', dispose, { once: true });
+      ScrollTrigger.refresh();
+    }
+
+    if (!motionQuery.matches && !narrowQuery.matches && stage) {
+      motionQuery.addEventListener('change', onPreferenceChange);
+      narrowQuery.addEventListener('change', onPreferenceChange);
+      start();
+      teardown = dispose;
+    }
+  }
+</script>
+
+<style>
+  .case {
+    position: relative;
+    margin-top: var(--space-2);
+  }
+  .case.is-live {
+    height: 340vh;
+  }
+
+  .stage {
+    position: relative;
+    width: min(1480px, 95vw);
+    margin-inline: auto;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: var(--space-2) var(--space-3);
+  }
+  .case.is-live .stage {
+    position: sticky;
+    top: 4.5rem;
+    height: calc(100svh - 5rem);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      radial-gradient(120% 90% at 20% 0%, rgb(125 211 252 / 0.07), transparent 58%),
+      var(--surface);
+  }
+
+  /* ── HUD ─────────────────────────────────────────────────────────── */
+  .hud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-2);
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .hud__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .hud__mark {
+    width: 18px;
+    height: 20px;
+    color: var(--accent);
+    flex: none;
+  }
+  .hud__name {
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+  }
+  .hud__sep {
+    color: var(--border);
+  }
+  .gpu {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    background: var(--surface-2);
+    transition: border-color 0.4s ease;
+  }
+  .gpu__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .gpu.is-busy {
+    border-color: rgb(125 211 252 / 0.5);
+  }
+  .gpu.is-busy .gpu__dot {
+    background: var(--accent);
+    box-shadow: 0 0 10px 1px rgb(125 211 252 / 0.7);
+  }
+  .gpu__state {
+    font-weight: 500;
+  }
+  .gpu.is-busy .gpu__state {
+    color: var(--accent);
+  }
+
+  /* ── Écran scindé ────────────────────────────────────────────────── */
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 2.2fr) minmax(320px, 380px);
+    gap: 1.5rem;
+    align-items: center;
+    min-height: 0;
+  }
+
+  /* Colonne gauche : fenêtre applicative, hauteur calée sur la capture */
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #0b0f14;
+    overflow: hidden;
+  }
+  .app__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .app__dots {
+    display: inline-flex;
+    gap: 5px;
+  }
+  .app__dots i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2f3a47;
+  }
+  .app__dots i:first-child {
+    background: rgb(245 158 107 / 0.55);
+  }
+  .app__url {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app__badge {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    border: 1px solid rgb(125 211 252 / 0.32);
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    background: var(--accent-soft);
+    white-space: nowrap;
+  }
+  .app__screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    max-height: calc(100svh - 11rem);
+    background: #0b0f14;
+  }
+  .shot {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0.4rem;
+    opacity: 0;
+    visibility: hidden;
+  }
+  .shot.is-first {
+    opacity: 1;
+    visibility: visible;
+  }
+  .shot :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 5px;
+  }
+  .app__caption {
+    padding: 0.35rem 0.7rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Colonne droite : accordéon vertical */
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+    align-self: stretch;
+  }
+  .side__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+  }
+  .acc {
+    /* Répartit les 5 étapes sur la hauteur du stage, comme un rail de contrôle */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .acc__item {
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    overflow: hidden;
+    transition:
+      border-color 0.35s ease,
+      background 0.35s ease;
+  }
+  .acc__item.is-open {
+    border-left-color: var(--accent);
+    border-color: rgb(125 211 252 / 0.32);
+    background: var(--surface);
+  }
+  .acc__head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .acc__num {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+    flex: none;
+  }
+  .acc__title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--muted);
+    transition: color 0.3s ease;
+  }
+  .acc__item.is-open .acc__title {
+    color: var(--text);
+  }
+  .acc__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .acc__item.is-open .acc__panel {
+    grid-template-rows: 1fr;
+  }
+  .acc__inner {
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .acc__item.is-open .acc__inner {
+    opacity: 1;
+  }
+  .acc__text {
+    padding: 0 0.65rem;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .tech {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 0.45rem 0 0;
+    padding: 0 0.65rem 0.6rem;
+    list-style: none;
+  }
+  .tech__item {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    background: var(--surface-2);
+  }
+
+  /* ── Repli : étapes empilées ─────────────────────────────────────── */
+  .static {
+    display: none;
+  }
+  .case:not(.is-live) .stage {
+    display: none;
+  }
+  .case:not(.is-live) .static {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .s-step {
+    display: grid;
+    gap: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-2);
+  }
+  .s-step__shot {
+    margin: 0;
+    border-radius: 8px;
+    background: #0b0f14;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .s-step__shot :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .s-step__tag {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .s-step__text {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--muted);
+    margin-top: 0.35rem;
+  }
+
+  @media (max-width: 1180px) {
+    .split {
+      grid-template-columns: minmax(0, 1.9fr) minmax(300px, 340px);
+      gap: 1rem;
+    }
+    .acc__title {
+      font-size: 0.75rem;
+    }
+    .acc__text {
+      font-size: 0.6875rem;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .s-step {
+      padding: var(--space-1);
+    }
+  }
+</style>

@@ -3,6 +3,7 @@ import { getCollection, render, type CollectionEntry } from 'astro:content';
 import ProjectLayout from '../../layouts/ProjectLayout.astro';
 import FridgeScrollytelling from '../../components/FridgeScrollytelling.astro';
 import BarosScrollytelling from '../../components/BarosScrollytelling.astro';
+import ColumbooScrollytelling from '../../components/ColumbooScrollytelling.astro';
 
 export async function getStaticPaths() {
   const projects = (
@@ -37,6 +38,7 @@ const { Content } = await render(project);
 const slug = project.id.split('/').at(-1);
 const showFridge = slug === 'colocos' && Boolean(data.cover);
 const showBaros = slug === 'baros';
+const showColumboo = slug === 'columboo';
 ---
 
 <ProjectLayout project={project} prev={prev} next={next}>
@@ -49,5 +51,6 @@ const showBaros = slug === 'baros';
       )
     }
     {showBaros && <BarosScrollytelling cover={data.cover} coverAlt={data.coverAlt} />}
+    {showColumboo && <ColumbooScrollytelling />}
   </Fragment>
 </ProjectLayout>

@@ -5,6 +5,7 @@ import BaseLayout from './BaseLayout.astro';
 import StatusBadge from '../components/StatusBadge.astro';
 import Icon from '../components/Icon.astro';
 import Topo from '../components/Topo.astro';
+import GalleryStack from '../components/GalleryStack.astro';
 import { ui } from '../i18n/fr';
 
 type Nav = { slug: string; title: string } | null;
@@ -37,7 +38,16 @@ const hasShowcase = showcase.trim().length > 0;
         <dl class="facts">
           <div><dt>{ui.project.role}</dt><dd>{data.role}</dd></div>
           <div><dt>{ui.project.context}</dt><dd>{data.context}</dd></div>
-          {data.period && <div><dt>{ui.project.period}</dt><dd>{data.period}</dd></div>}
+          {
+            data.period && (
+              <div>
+                <>
+                  <dt>{ui.project.period}</dt>
+                  <dd>{data.period}</dd>
+                </>
+              </div>
+            )
+          }
           {
             data.metric && (
               <div>
@@ -100,34 +110,20 @@ const hasShowcase = showcase.trim().length > 0;
     }
 
     <div class="container body">
-      <div class="prose">
-        <slot />
-      </div>
       <aside class="stack">
         <h2>{ui.project.stack}</h2>
         <ul>{data.stack.map((s) => <li class="tag">{s}</li>)}</ul>
       </aside>
+      <div class="prose">
+        <slot />
+      </div>
     </div>
 
     {
       data.gallery.length > 0 && (
-        <section class="container gallery" aria-label={ui.project.gallery}>
-          <h2>{ui.project.gallery}</h2>
-          <div class="gallery__grid">
-            {data.gallery.map((g) => (
-              <figure>
-                <Picture
-                  src={g.src}
-                  formats={['avif', 'webp']}
-                  widths={[600, 1200]}
-                  sizes="(max-width: 860px) 100vw, 540px"
-                  alt={g.alt}
-                />
-                <figcaption>{g.alt}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </section>
+        <GalleryStack
+          items={data.gallery.map((g) => ({ image: g.src, caption: g.alt, alt: g.alt }))}
+        />
       )
     }
 
@@ -153,6 +149,50 @@ const hasShowcase = showcase.trim().length > 0;
     </nav>
   </article>
 </BaseLayout>
+
+<script>
+  // Apparition progressive des blocs du corps de fiche. Les classes ne sont
+  // posées que si l'animation est autorisée : sans JS ou en reduced-motion,
+  // le contenu reste pleinement visible.
+  const prose = document.querySelector<HTMLElement>('.prose');
+  const motionOk = window.matchMedia('(prefers-reduced-motion: no-preference)');
+
+  if (prose && motionOk.matches) {
+    const blocks = Array.from(prose.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement && !el.matches('script, style'),
+    );
+
+    // Les quatre cartes de verrous sont animées individuellement (stagger CSS).
+    const targets = blocks.flatMap((block) =>
+      block.classList.contains('verrous-grid')
+        ? Array.from(block.querySelectorAll<HTMLElement>('.verrou-card'))
+        : [block],
+    );
+
+    for (const el of targets) el.classList.add('reveal-block');
+
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-in');
+            io.unobserve(entry.target);
+          }
+        },
+        { rootMargin: '0px 0px -8% 0px', threshold: 0.04 },
+      );
+      for (const el of targets) io.observe(el);
+
+      // Arrivée par ancre : le premier écran doit être lisible immédiatement.
+      if (window.location.hash) {
+        targets.forEach((el) => el.classList.add('is-in'));
+      }
+    } else {
+      targets.forEach((el) => el.classList.add('is-in'));
+    }
+  }
+</script>
 
 <style>
   .head {
@@ -243,14 +283,70 @@ const hasShowcase = showcase.trim().length > 0;
   .showcase {
     margin-top: var(--space-2);
   }
+  /* Largeur de lecture élargie : la fiche respire sur desktop sans perdre
+     la colonne de stack à droite. */
+  .cover,
   .body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
-    gap: var(--space-5);
+    width: min(1240px, 92vw);
+    margin-inline: auto;
+  }
+  /* Le showcase (scrollytelling) sort de la largeur de lecture. */
+  .showcase {
+    width: min(1480px, 95vw);
+    margin-inline: auto;
+  }
+  .body {
     padding-block: var(--space-5);
   }
   .prose {
-    max-width: 68ch;
+    max-width: 100%;
+  }
+  /* Desktop : la stack flotte en haut à droite, le texte coule à côté.
+     À partir du deuxième <h2>, tout repasse en pleine largeur. */
+  @media (min-width: 861px) {
+    .body {
+      display: block;
+    }
+    .stack {
+      float: right;
+      width: 260px;
+      margin: 0 0 1.75rem 3rem;
+      position: static;
+    }
+    /* display: contents : les enfants de .prose deviennent les enfants de
+       .body, donc le float et les clear s'appliquent vraiment. */
+    .prose {
+      display: contents;
+    }
+    .prose > :global(h2 ~ h2),
+    .prose > :global(h2 ~ h2 ~ *) {
+      clear: both;
+    }
+    .prose > :global(h2 ~ h2 ~ p),
+    .prose > :global(h2 ~ h2 ~ ul),
+    .prose > :global(h2 ~ h2 ~ ol) {
+      max-width: 96ch;
+    }
+    .prose > :global(h2 ~ h2 ~ table),
+    .prose > :global(h2 ~ h2 ~ pre),
+    .prose > :global(h2 ~ h2 ~ blockquote),
+    .prose > :global(.verrous-grid) {
+      width: 100%;
+      max-width: 100%;
+    }
+  }
+  /* Le texte courant garde une mesure confortable, les blocs larges prennent
+     toute la colonne. */
+  .prose :global(p),
+  .prose :global(ul),
+  .prose :global(ol) {
+    max-width: 82ch;
+  }
+  .prose :global(table),
+  .prose :global(pre),
+  .prose :global(blockquote),
+  .prose :global(figure) {
+    max-width: 100%;
   }
   .prose :global(h2) {
     font-size: var(--step-1);
@@ -347,8 +443,54 @@ const hasShowcase = showcase.trim().length > 0;
   .prose :global(blockquote p:last-child) {
     margin-bottom: 0;
   }
-  .stack h2,
-  .gallery h2 {
+  /* Tableaux Markdown (benchmarks, matrices de décision) */
+  .prose :global(table) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: var(--space-2) 0 var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .prose :global(thead th) {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    white-space: nowrap;
+    padding: 0.6rem 0.85rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .prose :global(td) {
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    color: #c9d1d9;
+    vertical-align: top;
+  }
+  .prose :global(tbody tr:last-child td) {
+    border-bottom: 0;
+  }
+  .prose :global(tbody tr:hover td) {
+    background: rgb(255 255 255 / 0.02);
+  }
+  .prose :global(td strong) {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--accent);
+  }
+  .prose :global(td code) {
+    white-space: nowrap;
+  }
+  .stack h2 {
     font-family: var(--font-mono);
     font-size: var(--step--1);
     font-weight: 500;
@@ -365,25 +507,56 @@ const hasShowcase = showcase.trim().length > 0;
     flex-wrap: wrap;
     gap: 0.375rem;
   }
-  .stack .tag {
+  /* Grille des quatre verrous (HTML injecté depuis le Markdown) */
+  .prose :global(.verrous-grid) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin: var(--space-2) 0 var(--space-3);
+  }
+  .prose :global(.verrou-card) {
+    display: grid;
+    gap: 0.55rem;
+    align-content: start;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-left: 2px solid rgb(125 211 252 / 0.35);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .prose :global(.verrou-card h3) {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     color: var(--text);
   }
-  .gallery__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
-    gap: var(--space-3);
-  }
-  figure {
+  .prose :global(.verrou-card p) {
     margin: 0;
-  }
-  figure :global(img) {
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-  }
-  figcaption {
-    font-size: var(--step--1);
+    max-width: none;
+    font-size: 0.8125rem;
+    line-height: 1.55;
     color: var(--muted);
-    margin-top: 0.5rem;
+  }
+  .prose :global(.verrou-card p b) {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 0.1rem;
+  }
+  .prose :global(.verrou-card .verrou-impact) {
+    color: var(--text);
+  }
+  .prose :global(.verrou-card .verrou-impact strong) {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .stack .tag {
+    color: var(--text);
   }
   .pager {
     display: flex;
@@ -414,10 +587,76 @@ const hasShowcase = showcase.trim().length > 0;
     text-align: right;
     margin-left: auto;
   }
+  /* Apparition progressive des blocs du corps (classes posées par le script) */
+  @media (prefers-reduced-motion: no-preference) {
+    .prose :global(.reveal-block) {
+      opacity: 0;
+      transform: translateY(22px);
+      transition:
+        opacity 0.55s ease,
+        transform 0.55s ease;
+    }
+    .prose :global(.reveal-block.is-in) {
+      opacity: 1;
+      transform: none;
+    }
+    .prose :global(.verrou-card.reveal-block:nth-child(2)) {
+      transition-delay: 0.08s;
+    }
+    .prose :global(.verrou-card.reveal-block:nth-child(3)) {
+      transition-delay: 0.16s;
+    }
+    .prose :global(.verrou-card.reveal-block:nth-child(4)) {
+      transition-delay: 0.24s;
+    }
+  }
+
   @media (max-width: 860px) {
+    .prose :global(.verrous-grid) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    /* La stack est avant le texte dans le DOM (pour le float desktop) :
+       on rétablit l'ordre de lecture sur mobile. */
     .body {
-      grid-template-columns: 1fr;
+      display: flex;
+      flex-direction: column;
       gap: var(--space-4);
+    }
+    .prose {
+      order: 1;
+      min-width: 0;
+    }
+    .stack {
+      order: 2;
+      width: 100%;
+      float: none;
+      margin: 0;
+    }
+    /* Tableaux larges : on garde le défilement interne au tableau, mais on
+       laisse les cellules revenir à la ligne pour éviter tout débordement. */
+    .prose :global(td code),
+    .prose :global(th) {
+      white-space: normal;
+    }
+    .prose :global(table) {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+  @media (min-width: 861px) {
+    .prose > :global(p) {
+      max-width: 100%;
+    }
+    .prose :global(table) {
+      display: table;
+      width: 100%;
+      overflow: visible;
+      table-layout: auto;
+    }
+    .prose :global(thead th) {
+      white-space: nowrap;
+    }
+    .prose :global(tbody tr:last-child td) {
+      border-bottom: 0;
     }
   }
 </style>

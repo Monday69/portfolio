@@ -1,0 +1,258 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import { ui } from '../i18n/fr';
+
+interface Props {
+  items: { image: ImageMetadata; caption: string; alt?: string }[];
+}
+
+const { items } = Astro.props;
+
+/**
+ * Paliers de largeur demandés à l'optimiseur, plafonnés à la résolution native
+ * de chaque capture : on ne demande jamais un rendu plus large que la source.
+ * La largeur native exacte est ajoutée en dernier quand elle ne tombe pas sur
+ * un palier (ex. 770 px), pour que le navigateur ait toujours un variant 1:1.
+ */
+const STEPS = [640, 960, 1280, 1920, 2880];
+const widthsFor = (image: ImageMetadata) => {
+  const usable = STEPS.filter((width) => width <= image.width);
+  if (usable.length === 0) return [image.width];
+  if (usable[usable.length - 1] !== image.width) usable.push(image.width);
+  return usable;
+};
+
+const pad = (value: number) => String(value).padStart(2, '0');
+---
+
+<section class="gallery-stack" data-gallery-stack aria-label={ui.project.gallery}>
+  <h2 class="gallery-stack__title">{ui.project.gallery}</h2>
+
+  <ol class="gallery-stack__list">
+    {
+      items.map((item, index) => (
+        <li
+          class="stack-card"
+          data-stack-card
+          style={`--i: ${index}; --native: ${item.image.width}px`}
+        >
+          <div class="stack-card__bar">
+            <span class="stack-card__dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span class="stack-card__index">
+              {pad(index + 1)} / {pad(items.length)}
+            </span>
+            <h3 class="stack-card__caption">{item.caption}</h3>
+          </div>
+
+          <div class="stack-card__frame">
+            <Picture
+              src={item.image}
+              formats={['avif', 'webp']}
+              widths={widthsFor(item.image)}
+              sizes="(max-width: 860px) 94vw, min(1160px, 88vw)"
+              quality={95}
+              alt={item.alt ?? item.caption}
+              loading={index === 0 ? 'eager' : 'lazy'}
+            />
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+</section>
+
+<script>
+  /**
+   * Empilement en profondeur : quand la carte `i + 1` remonte recouvrir la carte
+   * `i`, celle-ci rétrécit et s'assombrit au fil du scroll (scrub, sans easing).
+   * `position: sticky` porte l'empilement, GSAP ne fait que la profondeur.
+   * Rien n'est chargé sous `prefers-reduced-motion: reduce` ni sous 861px.
+   */
+  const stack = document.querySelector<HTMLElement>('[data-gallery-stack]');
+  const cards = stack ? [...stack.querySelectorAll<HTMLElement>('[data-stack-card]')] : [];
+  const mq = window.matchMedia('(min-width: 861px) and (prefers-reduced-motion: no-preference)');
+
+  if (cards.length > 1) {
+    let started = false;
+    let teardown: () => void = () => {};
+
+    const start = async () => {
+      if (started) return;
+      started = true;
+
+      const [{ gsap }, { ScrollTrigger }] = await Promise.all([
+        import('gsap'),
+        import('gsap/ScrollTrigger'),
+      ]);
+      gsap.registerPlugin(ScrollTrigger);
+
+      const mm = gsap.matchMedia();
+
+      mm.add('(min-width: 861px) and (prefers-reduced-motion: no-preference)', () => {
+        cards.slice(0, -1).forEach((card, index) => {
+          const next = cards[index + 1];
+          if (!next) return;
+
+          // Décalage sticky réel de la carte suivante (px), lu sur le CSS.
+          const stickyTop = parseFloat(getComputedStyle(next).top);
+          const end = Number.isFinite(stickyTop) ? stickyTop : 96;
+
+          gsap.fromTo(
+            card,
+            { scale: 1, filter: 'brightness(1)' },
+            {
+              scale: 0.93,
+              filter: 'brightness(0.62)',
+              ease: 'none',
+              transformOrigin: 'top center',
+              scrollTrigger: {
+                trigger: next,
+                start: 'top bottom',
+                end: () => `top top+=${end}`,
+                scrub: true,
+              },
+            },
+          );
+        });
+      });
+
+      teardown = () => {
+        mm.revert();
+        gsap.set(cards, { clearProps: 'transform,filter' });
+        teardown = () => {};
+      };
+
+      window.addEventListener('pagehide', () => teardown(), { once: true });
+      document.addEventListener('astro:before-swap', () => teardown(), { once: true });
+    };
+
+    if (mq.matches) void start();
+    mq.addEventListener('change', (event) => {
+      if (event.matches) void start();
+    });
+  }
+</script>
+
+<style>
+  .gallery-stack {
+    padding-block: var(--space-5) var(--space-6);
+  }
+  .gallery-stack__title {
+    width: min(1160px, 90vw);
+    margin: 0 auto var(--space-4);
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .gallery-stack__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Carte fenêtre : plein format, empilable */
+  .stack-card {
+    width: min(1160px, 90vw);
+    margin: 0 auto clamp(4rem, 12vh, 8rem);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+  }
+
+  .stack-card__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .stack-card__dots {
+    display: inline-flex;
+    gap: 5px;
+    flex: 0 0 auto;
+  }
+  .stack-card__dots i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .stack-card__index {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .stack-card__caption {
+    min-width: 0;
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stack-card__frame {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 16 / 10;
+    background: var(--frame);
+    border-top: 1px solid rgb(0 0 0 / 0.35);
+  }
+  .stack-card__frame :global(img) {
+    display: block;
+    /* Jamais de rendu plus large que la résolution native : pas d'étirement */
+    width: auto;
+    max-width: min(100%, var(--native));
+    height: auto;
+    max-height: 100%;
+    margin: auto;
+    object-fit: contain;
+  }
+
+  /* Desktop animé : empilement sticky avec décalage progressif */
+  @media (min-width: 861px) and (prefers-reduced-motion: no-preference) {
+    .stack-card {
+      position: sticky;
+      top: calc(5.25rem + var(--i) * 14px);
+      max-height: calc(100svh - 11rem);
+    }
+    .stack-card__frame {
+      max-height: calc(100svh - 11rem);
+    }
+  }
+
+  /* Mobile ou reduce : pile verticale simple, captures pleine largeur */
+  @media (max-width: 860px), (prefers-reduced-motion: reduce) {
+    .stack-card {
+      margin-bottom: var(--space-4);
+    }
+    .stack-card__frame {
+      aspect-ratio: auto;
+    }
+    .stack-card__frame :global(img) {
+      height: auto;
+      object-fit: contain;
+    }
+    .stack-card__caption {
+      font-size: 0.875rem;
+      /* La légende reste lisible en entier sur petit écran */
+      white-space: normal;
+    }
+  }
+</style>
