@@ -2,6 +2,7 @@
 import { getCollection, render, type CollectionEntry } from 'astro:content';
 import ProjectLayout from '../../layouts/ProjectLayout.astro';
 import FridgeScrollytelling from '../../components/FridgeScrollytelling.astro';
+import BarosScrollytelling from '../../components/BarosScrollytelling.astro';
 
 export async function getStaticPaths() {
   const projects = (
@@ -31,20 +32,22 @@ const { project, prev, next } = Astro.props;
 const { data } = project;
 const { Content } = await render(project);
 
-// Scène 3D pilotée au scroll : uniquement sur la fiche ColocOS, et seulement si
-// une couverture existe (elle sert de repli statique pour reduced-motion / mobile).
+// Scènes 3D pilotées au scroll : ColocOS (frigo) et BarOS (machine éclatée).
+// La couverture reste le repli statique pour reduced-motion / petit écran.
 const slug = project.id.split('/').at(-1);
-const hasShowcase = slug === 'colocos' && Boolean(data.cover);
+const showFridge = slug === 'colocos' && Boolean(data.cover);
+const showBaros = slug === 'baros';
 ---
 
 <ProjectLayout project={project} prev={prev} next={next}>
   <Content />
 
-  {
-    hasShowcase && data.cover && (
-      <Fragment slot="showcase">
+  <Fragment slot="showcase">
+    {
+      showFridge && data.cover && (
         <FridgeScrollytelling cover={data.cover} coverAlt={data.coverAlt ?? data.title} />
-      </Fragment>
-    )
-  }
+      )
+    }
+    {showBaros && <BarosScrollytelling cover={data.cover} coverAlt={data.coverAlt} />}
+  </Fragment>
 </ProjectLayout>

@@ -1,0 +1,625 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Topo from './Topo.astro';
+
+interface Props {
+  /** Couverture éventuelle (absente sur `baros.md` aujourd'hui). */
+  cover?: ImageMetadata;
+  coverAlt?: string;
+}
+
+const { cover, coverAlt } = Astro.props;
+
+const cards = [
+  {
+    zone: 'Châssis',
+    title: 'Plateforme de service',
+    text: 'Structure circulaire compacte et zone de dosage centralisée : toute la mécanique tient sous le barillet, aucune pièce mobile accessible.',
+  },
+  {
+    zone: 'Étage distribution',
+    title: '12 électrovannes & buses',
+    text: 'Dosage gravitaire piloté à la milliseconde via la loi de Torricelli : le débit est recalculé en continu selon le niveau restant de chaque bouteille.',
+  },
+  {
+    zone: 'Barillet',
+    title: 'Barillet 12 réservoirs & Raspberry Pi 5',
+    text: 'Sélection modulaire des spiritueux et paiement Hybrid-Pay : QR code dynamique ou badge NFC, encaissé directement par la machine.',
+  },
+];
+---
+
+<section class="machine" data-baros aria-label="Vue éclatée animée de la machine BarOS">
+  <div class="stage" data-stage>
+    <div class="fallback">
+      {
+        cover ? (
+          <Picture
+            src={cover}
+            formats={['avif', 'webp']}
+            widths={[800, 1400, 2200]}
+            sizes="(max-width: 1160px) 100vw, 1120px"
+            alt={coverAlt ?? 'Machine BarOS'}
+            loading="lazy"
+          />
+        ) : (
+          <div class="fallback__panel">
+            <Topo class="fallback__topo" seed={9} />
+            <div class="fallback__body">
+              <p class="fallback__eyebrow">BarOS · Vue éclatée</p>
+              <p class="fallback__title">BarOS</p>
+              <p class="fallback__note">
+                La vue 3D interactive (assemblage éclaté en trois étages) se charge sur grand écran,
+                avec les animations autorisées.
+              </p>
+            </div>
+          </div>
+        )
+      }
+    </div>
+
+    <canvas class="canvas" data-canvas aria-hidden="true"></canvas>
+    <p class="status" data-status role="status">chargement du modèle 3D…</p>
+
+    <ol class="cards" data-cards>
+      {
+        cards.map((card, i) => (
+          <li class="card" data-card>
+            <span class="card__index">
+              {String(i + 1).padStart(2, '0')} / {String(cards.length).padStart(2, '0')} ·{' '}
+              {card.zone}
+            </span>
+            <h3 class="card__title">{card.title}</h3>
+            <p class="card__text">{card.text}</p>
+          </li>
+        ))
+      }
+    </ol>
+
+    <p class="hint" data-hint>défilez pour éclater la machine</p>
+  </div>
+</section>
+
+<script>
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+  import gsap from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  const MODEL_URL = '/models/machine.gltf';
+
+  /** Découpage vertical mesuré dans le repère Onshape (Z-up). */
+  const BASE_MAX_Z = 0.25;
+  const MANIFOLD_MAX_Z = 0.39;
+
+  /** Écartement de la vue éclatée, en unités du modèle (Z local = verticale). */
+  const EXPLODE_MANIFOLD = 0.16;
+  const EXPLODE_CAROUSEL = 0.32;
+
+  function supportsWebGL(): boolean {
+    try {
+      const probe = document.createElement('canvas');
+      return Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'));
+    } catch {
+      return false;
+    }
+  }
+
+  const section = document.querySelector<HTMLElement>('[data-baros]');
+  const stage = section?.querySelector<HTMLElement>('[data-stage]') ?? null;
+  const canvas = section?.querySelector<HTMLCanvasElement>('[data-canvas]') ?? null;
+  const statusEl = section?.querySelector<HTMLElement>('[data-status]') ?? null;
+  const hintEl = section?.querySelector<HTMLElement>('[data-hint]') ?? null;
+  const cardEls = section
+    ? Array.from(section.querySelectorAll<HTMLElement>('[data-card]'))
+    : [];
+
+  if (section && stage && canvas) {
+    // Alias non-nullable : les fermetures (start/build) perdent le narrowing.
+    const root = section;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const narrowQuery = window.matchMedia('(max-width: 640px)');
+
+    let teardown: (() => void) | null = null;
+
+    const isEligible = (): boolean =>
+      !motionQuery.matches && !narrowQuery.matches && supportsWebGL();
+
+    const showFallback = (message?: string): void => {
+      root.classList.remove('is-live', 'is-ready');
+      if (statusEl) {
+        statusEl.hidden = !message;
+        statusEl.textContent = message ?? '';
+      }
+    };
+
+    const start = (): void => {
+      // ── Rendu ────────────────────────────────────────────────────────────
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearAlpha(0);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.92;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(32, 1, 0.02, 40);
+      const lookTarget = new THREE.Vector3(0, 0, 0);
+
+      // holder (centrage) → spin (rotation de présentation) → machine (Z-up → Y-up)
+      const holder = new THREE.Group();
+      const spin = new THREE.Group();
+      const machine = new THREE.Group();
+      holder.add(spin);
+      spin.add(machine);
+      scene.add(holder);
+
+      const baseGroup = new THREE.Group();
+      const manifoldGroup = new THREE.Group();
+      const carouselGroup = new THREE.Group();
+      machine.add(baseGroup, manifoldGroup, carouselGroup);
+
+      // ── Éclairage studio ─────────────────────────────────────────────────
+      scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x0b0f14, 0.95));
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.45);
+      keyLight.position.set(1.6, 2.4, 1.9);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x9ec9ea, 0.75);
+      fillLight.position.set(-2.1, 0.8, -1.6);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      rimLight.position.set(-0.4, 1.4, -2.4);
+      scene.add(rimLight);
+
+      root.classList.add('is-live');
+
+      // ── Chargement différé ───────────────────────────────────────────────
+      const loader = new GLTFLoader();
+      let timeline: gsap.core.Timeline | null = null;
+      let disposed = false;
+
+      const size = new THREE.Vector3(0.6, 0.54, 0.6);
+      const baseDistance = { value: 2 };
+
+      const frameCamera = (): number => {
+        const fov = THREE.MathUtils.degToRad(camera.fov);
+        // On cadre sur la pile éclatée (modèle + écartement du barillet), sinon
+        // le barillet sort du cadre pendant la phase 0 → 25 %.
+        const height = size.y + EXPLODE_CAROUSEL;
+        const distH = height / 2 / Math.tan(fov / 2);
+        const distW = size.x / 2 / Math.tan(fov / 2) / Math.max(camera.aspect, 0.35);
+        return Math.max(distH, distW) * 1.18;
+      };
+
+      const resize = (): void => {
+        const width = stage.clientWidth;
+        const height = stage.clientHeight;
+        if (!width || !height) return;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+
+      const observer = new ResizeObserver(resize);
+      observer.observe(stage);
+      resize();
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          io.disconnect();
+          loader.load(
+            MODEL_URL,
+            (gltf) => {
+              if (disposed) return;
+              build(gltf.scene);
+            },
+            (event) => {
+              if (!statusEl || !event.total) return;
+              const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+              statusEl.textContent = `chargement du modèle 3D… ${percent} %`;
+            },
+            () => {
+              if (disposed) return;
+              showFallback('Aperçu 3D indisponible — encart statique affiché.');
+              root.classList.remove('is-live');
+            },
+          );
+        },
+        { rootMargin: '400px 0px' },
+      );
+      io.observe(root);
+
+      // ── Préparation du modèle Onshape ────────────────────────────────────
+      function build(model: THREE.Object3D): void {
+        scene.add(model);
+        model.updateMatrixWorld(true);
+
+        const meshes: THREE.Mesh[] = [];
+        const seenMaterials = new Set<THREE.Material>();
+
+        model.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          meshes.push(mesh);
+
+          // Onshape exporte des surfaces d'épaisseur nulle (Plaque, godets) :
+          // sans DoubleSide elles disparaissent selon l'angle de vue.
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const material of materials) {
+            if (!material || seenMaterials.has(material)) continue;
+            seenMaterials.add(material);
+            material.side = THREE.DoubleSide;
+            material.needsUpdate = true;
+          }
+        });
+
+        // Découpage en 3 étages d'après la hauteur Z d'Onshape (bbox monde,
+        // racine à l'identité → monde = repère Onshape).
+        const center = new THREE.Vector3();
+        let baseCount = 0;
+        let manifoldCount = 0;
+        let carouselCount = 0;
+
+        for (const mesh of meshes) {
+          const box = new THREE.Box3().setFromObject(mesh);
+          box.getCenter(center);
+          const target =
+            center.z < BASE_MAX_Z
+              ? baseGroup
+              : center.z < MANIFOLD_MAX_Z
+                ? manifoldGroup
+                : carouselGroup;
+          target.attach(mesh); // préserve la matrice monde
+          if (target === baseGroup) baseCount++;
+          else if (target === manifoldGroup) manifoldCount++;
+          else carouselCount++;
+        }
+
+        scene.remove(model);
+        machine.updateMatrixWorld(true);
+
+        // Repère Z-up → Y-up
+        machine.rotation.x = -Math.PI / 2;
+        spin.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(spin);
+        box.getSize(size);
+        const globalCenter = box.getCenter(new THREE.Vector3());
+
+        // Centrage sur la pile ÉCLATÉE (le barillet déployé grandit vers le haut),
+        // puis décalage à gauche pour laisser la colonne de cartes à droite.
+        const centeredY = -globalCenter.y;
+        holder.position.set(
+          -globalCenter.x - size.x * 0.16,
+          centeredY - EXPLODE_CAROUSEL / 2,
+          -globalCenter.z,
+        );
+
+        baseDistance.value = frameCamera();
+        camera.position.set(0, size.y * 0.04, baseDistance.value * 1.06);
+        camera.lookAt(lookTarget);
+        resize();
+
+        // ── Timeline pilotée par le scroll (0 → 100 %) ───────────────────
+        timeline = gsap.timeline({
+          defaults: { ease: 'none' },
+          scrollTrigger: {
+            trigger: root,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: 1,
+            invalidateOnRefresh: true,
+          },
+        });
+
+        const distance = baseDistance.value;
+
+        // 0 → 25 % : vue éclatée + rotation de présentation
+        timeline.to(manifoldGroup.position, { z: EXPLODE_MANIFOLD, duration: 25 }, 0);
+        timeline.to(carouselGroup.position, { z: EXPLODE_CAROUSEL, duration: 25 }, 0);
+        timeline.to(spin.rotation, { y: 0.14, duration: 25 }, 0);
+        timeline.to(camera.position, { z: distance * 1.02, duration: 25 }, 0);
+        if (hintEl) timeline.to(hintEl, { autoAlpha: 0, duration: 6 }, 18);
+
+        // 25 → 50 % : stabilisation, focus sur la plateforme de service
+        timeline.to(spin.rotation, { y: 0.1, duration: 25 }, 25);
+        timeline.to(camera.position, { z: distance * 1.0, y: size.y * 0.02, duration: 25 }, 25);
+        timeline.to(lookTarget, { y: -size.y * 0.12, duration: 25 }, 25);
+        if (cardEls[0]) {
+          timeline.fromTo(
+            cardEls[0],
+            { autoAlpha: 0, y: 26 },
+            { autoAlpha: 1, y: 0, duration: 9, ease: 'power2.out' },
+            28,
+          );
+        }
+
+        // 50 → 75 % : l'étage distribution vient s'emboîter
+        timeline.to(manifoldGroup.position, { z: 0, duration: 25, ease: 'power2.inOut' }, 50);
+        timeline.to(camera.position, { z: distance * 0.98, y: size.y * 0.03, duration: 25 }, 50);
+        timeline.to(lookTarget, { y: -size.y * 0.02, duration: 25 }, 50);
+        timeline.to(spin.rotation, { y: 0.18, duration: 25 }, 50);
+        if (cardEls[1]) {
+          timeline.fromTo(
+            cardEls[1],
+            { autoAlpha: 0, y: 26 },
+            { autoAlpha: 1, y: 0, duration: 9, ease: 'power2.out' },
+            53,
+          );
+        }
+
+        // 75 → 95 % : le barillet se verrouille en tournant (un tour complet le
+        // réaligne exactement sur ses logements à la fin)
+        timeline.to(carouselGroup.position, { z: 0, duration: 20, ease: 'power2.inOut' }, 75);
+        timeline.to(holder.position, { y: centeredY, duration: 20, ease: 'power2.inOut' }, 75);
+        timeline.to(carouselGroup.rotation, { z: Math.PI * 2, duration: 20 }, 75);
+        timeline.to(camera.position, { z: distance * 0.9, y: size.y * 0.02, duration: 20 }, 75);
+        timeline.to(lookTarget, { y: size.y * 0.04, duration: 20 }, 75);
+        if (cardEls[2]) {
+          timeline.fromTo(
+            cardEls[2],
+            { autoAlpha: 0, y: 26 },
+            { autoAlpha: 1, y: 0, duration: 9, ease: 'power2.out' },
+            78,
+          );
+        }
+
+        // 95 → 100 % : maintien avant de rendre le scroll
+        timeline.to({}, { duration: 5 }, 95);
+
+        root.classList.add('is-ready');
+        root.dataset.stages = `${baseCount}/${manifoldCount}/${carouselCount}`;
+        if (statusEl) statusEl.hidden = true;
+
+        ScrollTrigger.refresh();
+      }
+
+      renderer.setAnimationLoop(() => {
+        camera.lookAt(lookTarget);
+        renderer.render(scene, camera);
+      });
+
+      // ── Nettoyage ────────────────────────────────────────────────────────
+      const dispose = (): void => {
+        if (disposed) return;
+        disposed = true;
+        timeline?.scrollTrigger?.kill();
+        timeline?.kill();
+        observer.disconnect();
+        io.disconnect();
+        renderer.setAnimationLoop(null);
+        scene.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          mesh.geometry?.dispose();
+          const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+          if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+          else material?.dispose();
+        });
+        renderer.dispose();
+        renderer.forceContextLoss();
+        root.classList.remove('is-live', 'is-ready');
+      };
+
+      teardown = dispose;
+      window.addEventListener('pagehide', dispose, { once: true });
+      document.addEventListener('astro:before-swap', dispose, { once: true });
+    };
+
+    const onPreferenceChange = (): void => {
+      if (isEligible()) {
+        if (statusEl) statusEl.hidden = false;
+        start();
+      } else {
+        teardown?.();
+        teardown = null;
+        showFallback();
+      }
+    };
+
+    if (isEligible()) {
+      motionQuery.addEventListener('change', onPreferenceChange);
+      narrowQuery.addEventListener('change', onPreferenceChange);
+      start();
+    } else {
+      showFallback();
+    }
+  }
+</script>
+
+<style>
+  .machine {
+    position: relative;
+    margin-top: var(--space-2);
+  }
+  .machine.is-live {
+    height: 320vh;
+  }
+
+  .stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .machine.is-live .stage {
+    position: sticky;
+    top: 4.5rem;
+    height: calc(100svh - 5rem);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      radial-gradient(120% 90% at 30% 10%, rgb(125 211 252 / 0.07), transparent 62%),
+      radial-gradient(90% 80% at 76% 90%, rgb(245 158 107 / 0.05), transparent 58%),
+      var(--surface);
+  }
+
+  /* Repli : couverture si elle existe, sinon encart Topo + titre */
+  .fallback {
+    display: grid;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .fallback :global(img) {
+    width: 100%;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .fallback__panel {
+    position: relative;
+    display: grid;
+    align-items: end;
+    min-height: clamp(260px, 38vw, 400px);
+    padding: var(--space-4) var(--space-3) var(--space-3);
+    overflow: hidden;
+    isolation: isolate;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      radial-gradient(120% 100% at 74% 0%, rgb(125 211 252 / 0.1), transparent 60%),
+      var(--surface);
+  }
+  .fallback__topo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    color: var(--accent);
+    opacity: 0.16;
+  }
+  .fallback__body {
+    display: grid;
+    gap: 0.35rem;
+    max-width: 46ch;
+  }
+  .fallback__eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .fallback__title {
+    font-size: var(--step-2);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .fallback__note {
+    font-size: 0.875rem;
+    color: var(--muted);
+    max-width: 42ch;
+  }
+  .machine.is-live .fallback {
+    display: none;
+  }
+
+  .canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .machine.is-ready .canvas {
+    opacity: 1;
+  }
+  .machine:not(.is-live) .canvas,
+  .machine:not(.is-live) .cards,
+  .machine:not(.is-live) .hint,
+  .machine:not(.is-live) .status {
+    display: none;
+  }
+
+  .status {
+    position: absolute;
+    inset: auto 0 auto 0;
+    bottom: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .cards {
+    position: absolute;
+    top: 50%;
+    right: var(--space-3);
+    transform: translateY(-50%);
+    width: min(360px, 40%);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-2);
+    pointer-events: none;
+  }
+  .card {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: var(--space-2) var(--space-3);
+    opacity: 0;
+    visibility: hidden;
+  }
+  .card__index {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .card__title {
+    font-size: var(--step-0);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0.35rem 0 0.4rem;
+  }
+  .card__text {
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .hint {
+    position: absolute;
+    left: 50%;
+    bottom: var(--space-2);
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  @media (max-width: 860px) {
+    .cards {
+      width: min(300px, 46%);
+    }
+    .card {
+      padding: var(--space-1) var(--space-2);
+    }
+    .card__text {
+      font-size: 0.8125rem;
+    }
+  }
+</style>
