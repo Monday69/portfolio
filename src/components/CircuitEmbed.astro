@@ -1,0 +1,330 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Circuit {
+  image: ImageMetadata;
+  alt: string;
+  title: string;
+  embedUrl: string;
+  projectUrl: string;
+}
+
+interface Props {
+  circuit: Circuit;
+}
+
+const { circuit } = Astro.props;
+
+/** Les PNG passent par <Picture> plafonné au natif ; un éventuel SVG par <img>. */
+const isSvg = circuit.image.format === 'svg';
+const STEPS = [640, 960, 1280, 1600];
+const widths = isSvg
+  ? []
+  : [
+      ...new Set([...STEPS.filter((width) => width <= circuit.image.width), circuit.image.width]),
+    ].sort((a, b) => a - b);
+---
+
+<section
+  class="circuit"
+  data-circuit
+  data-embed-url={circuit.embedUrl}
+  data-state="static"
+  aria-label="Schéma de câblage"
+>
+  <div class="circuit__card">
+    <div class="circuit__bar">
+      <span class="circuit__dots" aria-hidden="true">
+        <i></i>
+        <i></i>
+        <i></i>
+      </span>
+
+      <p class="circuit__title">{circuit.title}</p>
+
+      <div class="circuit__actions">
+        <button
+          type="button"
+          class="circuit__toggle"
+          data-circuit-toggle
+          aria-pressed="false"
+          aria-controls="circuit-frame"
+        >
+          Vue interactive
+        </button>
+        <a
+          class="circuit__link"
+          href={circuit.projectUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ouvrir dans Cirkit <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="circuit__frame" id="circuit-frame" data-circuit-frame>
+      <div class="circuit__static" data-circuit-static>
+        {
+          isSvg ? (
+            <img
+              src={circuit.image.src}
+              alt={circuit.alt}
+              width={circuit.image.width}
+              height={circuit.image.height}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <Picture
+              src={circuit.image}
+              formats={['avif', 'webp']}
+              widths={widths.length > 0 ? widths : [circuit.image.width]}
+              sizes="(max-width: 860px) 94vw, 960px"
+              quality={95}
+              alt={circuit.alt}
+              loading="lazy"
+            />
+          )
+        }
+
+        <button type="button" class="circuit__cta" data-circuit-activate>
+          Activer le circuit interactif
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  /**
+   * Façade image locale : l'iframe Cirkit n'est créée qu'au premier clic, donc
+   * aucun coût de chargement et aucune capture de la molette pendant le scroll.
+   * Elle est ensuite conservée (masquée) pour ne pas perdre l'état du projet.
+   */
+  const root = document.querySelector<HTMLElement>('[data-circuit]');
+
+  if (root) {
+    const toggle = root.querySelector<HTMLButtonElement>('[data-circuit-toggle]');
+    const activate = root.querySelector<HTMLButtonElement>('[data-circuit-activate]');
+    const frame = root.querySelector<HTMLElement>('[data-circuit-frame]');
+    const staticView = root.querySelector<HTMLElement>('[data-circuit-static]');
+    const embedUrl = root.dataset.embedUrl ?? '';
+
+    let iframe: HTMLIFrameElement | null = null;
+    let interactive = false;
+
+    const render = (next: boolean) => {
+      if (!frame || !staticView) return;
+      interactive = next;
+
+      if (interactive && !iframe && embedUrl) {
+        const el = document.createElement('iframe');
+        el.src = embedUrl;
+        el.loading = 'lazy';
+        el.title = 'Schéma de câblage interactif — Cirkit Designer';
+        el.className = 'circuit__embed';
+        el.setAttribute('allowfullscreen', '');
+        frame.appendChild(el);
+        iframe = el;
+      }
+
+      if (iframe) iframe.hidden = !interactive;
+      staticView.hidden = interactive;
+      root.dataset.state = interactive ? 'interactive' : 'static';
+
+      if (toggle) {
+        toggle.textContent = interactive ? 'Revenir au schéma statique' : 'Vue interactive';
+        toggle.setAttribute('aria-pressed', String(interactive));
+      }
+    };
+
+    toggle?.addEventListener('click', () => render(!interactive));
+    activate?.addEventListener('click', () => render(true));
+  }
+</script>
+
+<style>
+  .circuit {
+    padding-block: var(--space-4) var(--space-5);
+  }
+
+  /* Même habillage fenêtre que GalleryStack */
+  .circuit__card {
+    width: min(1160px, 90vw);
+    margin-inline: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+  }
+
+  .circuit__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .circuit__dots {
+    display: inline-flex;
+    gap: 5px;
+    flex: 0 0 auto;
+  }
+  .circuit__dots i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .circuit__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .circuit__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 0 0 auto;
+  }
+
+  .circuit__toggle {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid rgb(125 211 252 / 0.4);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    cursor: pointer;
+    transition:
+      background-color 0.2s,
+      border-color 0.2s;
+  }
+  .circuit__toggle:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .circuit__toggle[aria-pressed='true'] {
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--surface);
+  }
+
+  .circuit__link {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .circuit__link:hover {
+    color: var(--accent);
+  }
+
+  /* État statique : plan technique clair, fils noirs lisibles */
+  .circuit__static {
+    position: relative;
+    padding: clamp(1rem, 2.5vw, 2rem);
+    background-color: var(--plan);
+    background-image: radial-gradient(rgb(20 30 45 / 0.12) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  .circuit__static :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .circuit__static[hidden] {
+    display: none;
+  }
+
+  /* Cadrage : le schéma entier (et le CTA) tient dans un seul viewport desktop.
+     Le fond papier reste pleine largeur, l'image est contenue et centrée. */
+  @media (min-width: 861px) {
+    .circuit__static :global(img) {
+      width: auto;
+      max-width: 100%;
+      max-height: min(76vh, 740px);
+      object-fit: contain;
+      margin-inline: auto;
+    }
+  }
+
+  .circuit__cta {
+    position: absolute;
+    right: clamp(1rem, 2.5vw, 2rem);
+    bottom: clamp(1rem, 2.5vw, 2rem);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgb(14 17 22 / 0.94);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 0.35);
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+  }
+  .circuit__cta:hover {
+    background: var(--accent);
+    color: #06212e;
+  }
+
+  /* État activé : iframe Cirkit, créée au clic.
+     L'élément étant créé en JS, il ne porte pas l'attribut de scope d'Astro :
+     la règle doit donc être globale. */
+  .circuit__frame :global(.circuit__embed) {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 440px;
+    border: 0;
+  }
+  .circuit__frame :global(.circuit__embed[hidden]) {
+    display: none;
+  }
+
+  @media (max-width: 720px) {
+    .circuit__bar {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .circuit__title {
+      order: 3;
+      flex-basis: 100%;
+      white-space: normal;
+      font-size: 0.75rem;
+    }
+    .circuit__actions {
+      margin-left: auto;
+    }
+    /* Sur petit écran, un badge flottant masquerait la moitié du schéma :
+       le CTA repasse dans le flux, sous l'image. */
+    .circuit__cta {
+      position: static;
+      display: block;
+      width: 100%;
+      margin-top: 0.75rem;
+      text-align: center;
+    }
+    .circuit__frame :global(.circuit__embed) {
+      min-height: 340px;
+    }
+  }
+</style>

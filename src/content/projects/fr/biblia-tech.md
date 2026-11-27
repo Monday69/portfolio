@@ -1,50 +1,71 @@
 ---
 title: BIBL'IA Tech
 tagline: Une photo d'étagère suffit pour repérer les livres bien rangés, mal rangés ou manquants — segmentation YOLO, OCR et réconciliation avec la base.
-order: 4
+order: 2
 status: school
 categories: [ia]
-stack: [YOLOv11-seg, PaddleOCR, OpenCV, FastAPI, React, SQLite]
+stack: [YOLOv11, PaddleOCR, OpenCV, FastAPI, React / TS, Capacitor]
 context: ESME, projet de semestre en équipe de 3 (encadrant Alessandro Leite)
-role: Modèles de vision — segmentation YOLO des tranches et reconnaissance de texte (OCR)
+role: Computer Vision — datasets, segmentation, OCR et réconciliation
 period: '2026'
-metric: { value: '0,886', label: 'mask mAP@50 en segmentation des tranches' }
-cover: ../../../assets/projects/biblia/resultat-etagere.jpg
-coverAlt: Étagère analysée — chaque livre est segmenté, numéroté et coloré selon son statut de rangement
+metric: { value: '0,886 mAP@50 · 303 livres', label: '18 étagères · 76 500 tranches synthétiques' }
+cover: ../../../assets/projects/biblia/01-analyse-titres.jpg
+coverAlt: Diagnostic d'une étagère avec marqueur ArUco — livres conformes, mal placés et non reconnus identifiés dans l'interface
 gallery:
-  - { src: ../../../assets/projects/biblia/pipeline.jpg, alt: "Pipeline en 5 étapes — acquisition, marqueur ArUco, segmentation YOLO, OCR, réconciliation" }
-  - { src: ../../../assets/projects/biblia/segmentation-yolo.jpg, alt: "Masques de segmentation YOLO sur des livres inclinés" }
-  - { src: ../../../assets/projects/biblia/application-web.jpg, alt: "Écran de résultats de l'application — 17 livres attendus, 17 détectés" }
+  - { src: ../../../assets/projects/biblia/01-analyse-titres.jpg, alt: "Diagnostic complet d'étagère dans l'interface : 15 ouvrages bien placés, 1 mal placé, 1 non reconnu, 0 illisible" }
+  - { src: ../../../assets/projects/biblia/02-localisation-aruco.jpg, alt: "Marqueur fiduciaire ArUco en coin d'étagère liant la photographie au plan de rangement SQLite" }
+  - { src: ../../../assets/projects/biblia/03-annotation-sam.jpg, alt: "Annotation polygonale assistée par SAM (active learning sur Roboflow) sur tranches serrées" }
+  - { src: ../../../assets/projects/biblia/04-polygones-inclines.jpg, alt: "Masques polygonaux sur livres inclinés à 15°, évitant le bruit de fond des boîtes englobantes droites" }
+  - { src: ../../../assets/projects/biblia/05-validation-yolo.jpg, alt: "Mosaïque d'inférence de validation YOLOv11n-seg sur des rayonnages denses et variés" }
+  - { src: ../../../assets/projects/biblia/06-catalogue-bibliotheque.png, alt: "Gestion du catalogue de référence SQLite (303 ouvrages répartis sur 18 étagères ordonnées)" }
 links:
-  github: https://github.com/Monday69/BIBLIA-TECH
+  github: https://github.com/marmat3/BIBLIA-TECH
 ---
 
-## Le problème
+## Du rayonnage photographié à l'audit d'inventaire
 
-Vérifier l'inventaire d'une bibliothèque se fait encore livre par livre, à la main ou à la douchette. Une étagère complète prend de longues minutes et les livres mal rangés passent souvent inaperçus.
+Une photo d'étagère suffit : le marqueur ArUco identifie le rayonnage, YOLOv11n-seg (5,7 Mo) isole chaque tranche en polygone, l'homographie la redresse et PaddleOCR en lit le titre. RapidFuzz réconcilie ensuite la lecture avec les 303 ouvrages du plan de rangement, répartis sur 18 étagères.
 
-## La solution
+## Quatre décisions de Computer Vision & R&D
 
-L'utilisateur photographie une étagère depuis l'application mobile. Le pipeline fait le reste, en cinq étapes :
+<div class="verrous-grid">
 
-1. **Localisation** : un marqueur ArUco collé sur l'étagère l'identifie et charge son plan de rangement depuis SQLite.
-2. **Segmentation** : YOLOv11-seg isole chaque tranche avec un masque polygonal, ce qui gère les livres penchés mieux qu'une boîte droite. Les annotations ont été accélérées avec SAM.
-3. **Redressement** : égalisation CLAHE contre les reflets, puis homographie pour remettre chaque tranche à plat.
-4. **Lecture** : PaddleOCR extrait titre et auteur, en 134 ms par livre en moyenne.
-5. **Réconciliation** : un fuzzy matching (distance de Levenshtein) compare la lecture au plan attendu et classe chaque livre : bien placé, mal placé, intrus ou illisible.
+<article class="verrou-card">
+<p class="verrou-kpi">0,886 mAP@50 · 303 livres</p>
+<h3>Segmentation polygonale &amp; benchmark YOLO</h3>
+<p class="verrou-summary">Annotation en active learning via <code>SAM</code> (4 000 à 7 500 tranches) puis comparaison de trois générations : <code>YOLOv11n-seg</code> retenu face à <code>YOLOv8n</code> (livres inclinés) et à <code>YOLO26s</code> (10 s par étagère, faux positifs sur l'arrière-plan).</p>
+<div class="verrou-tags"><span>YOLOv11n-seg</span><span>SAM</span><span>OpenCV</span></div>
+</article>
 
-Le tout est exposé par une API FastAPI et une interface React / TypeScript, encapsulée dans une application Android (Capacitor).
+<article class="verrou-card">
+<p class="verrou-kpi">76 500 tranches · pivot CER 1,18</p>
+<h3>Du fine-tuning TrOCR à PaddleOCR</h3>
+<p class="verrou-summary">Dataset synthétique multilingue généré par <code>synthetic_factory.py</code> puis 24 h d'entraînement <code>TrOCR</code> sur RTX 4070 ; face aux hallucinations génératives sur photos réelles (CER 1,18), pivot assumé vers <code>PaddleOCR</code> discriminatif.</p>
+<div class="verrou-tags"><span>PaddleOCR</span><span>TrOCR</span><span>RTX 4070</span></div>
+</article>
 
-## Résultats
+<article class="verrou-card">
+<p class="verrou-kpi">7 dictionnaires · CLAHE LAB</p>
+<h3>Localisation ArUco &amp; redressement géométrique</h3>
+<p class="verrou-summary">Détection multi-dictionnaires <code>ArUco</code>, exclusion du marqueur carré par ratio d'aspect (<code>H/W &gt; 2</code>), égalisation <code>CLAHE</code> (<code>clipLimit=2.0</code>, tuiles <code>8×8</code>) et projection <code>warpPerspective</code> tranche par tranche.</p>
+<div class="verrou-tags"><span>ArUco</span><span>CLAHE</span><span>Homographie</span></div>
+</article>
 
-Évaluation sur 276 tranches, tirées d'une base de 303 ouvrages répartis sur 18 étagères :
+<article class="verrou-card">
+<p class="verrou-kpi">58,3 % fiable · +24,6 % assisté</p>
+<h3>Réconciliation RapidFuzz &amp; latence mesurée</h3>
+<p class="verrou-summary">Score hybride <code>0,8 × token_set + 0,2 × token_sort</code> classant quatre états métier sur 276 tranches testées ; <code>34,5 s</code> de bout en bout pour une étagère complète, dont <code>1,29 s/livre</code> en OCR complet et <code>≈134 ms</code> par ouvrage en inférence.</p>
+<div class="verrou-tags"><span>RapidFuzz</span><span>FastAPI</span><span>SQLite</span></div>
+</article>
 
-- Segmentation : mask mAP@50 de 0,886, sans faux positif sur l'arrière-plan.
-- Reconnaissance : 58,3 % des livres identifiés de façon fiable, 24,6 % à confirmer visuellement, 17 % non lus (tranches trop fines, reflets).
-- Latence de bout en bout : 34,5 s pour une étagère de vingt livres, en réseau local.
+</div>
 
-## Ce que j'en retiens : l'échec de TrOCR
+## Benchmark segmentation & répartition d'équipe
 
-Avant PaddleOCR, j'ai fine-tuné TrOCR sur jusqu'à 76 500 tranches synthétiques (bruit, reflets, polices variées), environ 24 h d'entraînement sur une RTX 4070. Le modèle convergeait sur les données synthétiques, mais sur de vraies photos il inventait des titres mémorisés (CER de 1,18). Cette hallucination d'un OCR génératif nous a fait passer à PaddleOCR, qui ne peut pas inventer de texte. Le générateur et les scripts sont publiés dans [trocr-book-spines](https://github.com/Monday69/trocr-book-spines).
+| Modèle | mask mAP@50 | mask mAP@50-95 | Arbitrage |
+|---|---|---|---|
+| YOLOv8n-seg | 0,891 | 0,768 | Écarté sur tranches inclinées |
+| YOLOv11n-seg | 0,886 | 0,769 | Retenu — 5,7 Mo, généralisation stable |
+| YOLO26s-seg | 0,872 | 0,773 | Écarté — 10 s par étagère, faux positifs sur l'arrière-plan |
 
-_Projet d'équipe avec Matteo Bergeron (application mobile) et Tom Valette (données, tests, design)._
+Projet de semestre ESME (Majeure IA, encadré par Alessandro Leite), mené en trinôme avec Matteo Bergeron et Tom Valette : conception du pipeline Computer Vision, des jeux de données et des entraînements de mon côté ; interface React/TypeScript et packaging Android Capacitor par l'équipe. Le générateur de données et les scripts TrOCR sont publiés dans [trocr-book-spines](https://github.com/Monday69/script-d-entra-nement-OCR).

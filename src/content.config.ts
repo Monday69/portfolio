@@ -22,6 +22,15 @@ const projects = defineCollection({
       cover: image().optional(),
       coverAlt: z.string().optional(),
       gallery: z.array(z.object({ src: image(), alt: z.string() })).default([]),
+      circuit: z
+        .object({
+          image: image(),
+          alt: z.string(),
+          title: z.string(),
+          embedUrl: z.string().url(),
+          projectUrl: z.string().url(),
+        })
+        .optional(),
       links: z
         .object({
           github: z.string().url().optional(),

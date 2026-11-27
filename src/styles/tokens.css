@@ -12,6 +12,11 @@
   --accent-soft: rgb(125 211 252 / 0.12);
   --glow: #f59e6b; /* alpenglow, à utiliser avec parcimonie */
   --frame: #0b0f14; /* fond des fenêtres de captures, plus profond que --bg */
+  --plan: #e6ebf2; /* fond papier des schémas techniques (fils noirs lisibles) */
+
+  /* Hiérarchie de lecture des fiches projet */
+  --ink: var(--text); /* titres et texte fort */
+  --ink-soft: #c9d1d9; /* corps de texte des cartes, plus clair que --muted */
 
   /* Typographie */
   --font-sans: 'Inter Variable', system-ui, sans-serif;

@@ -1,7 +1,7 @@
 ---
 title: Jarvis Runner
 tagline: Coach d'entraînement personnel — planification, analyse physiologique (CP, W′, ACWR) et assistant IA local.
-order: 3
+order: 5
 status: private
 categories: [ia, fullstack]
 stack: [FastAPI, PostgreSQL, Alembic, React, TypeScript, Ollama]

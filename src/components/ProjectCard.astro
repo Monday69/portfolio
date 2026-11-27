@@ -12,6 +12,15 @@ interface Props {
 }
 const { project, slug, large = false } = Astro.props;
 const { data } = project;
+
+/**
+ * Palier large : la capture occupe ~62 % d'une carte de 1520 px max dans le
+ * parcours caméra. On demande jusqu'à 1600 px et on ajoute la largeur native
+ * exacte quand elle ne tombe pas sur un palier (aucun upscaling).
+ */
+const coverWidth = data.cover?.width ?? 0;
+const largeWidths = [640, 1100, 1600].filter((width) => width <= coverWidth);
+if (coverWidth > 0 && largeWidths.at(-1) !== coverWidth) largeWidths.push(coverWidth);
 ---
 
 <article
@@ -25,8 +34,10 @@ const { data } = project;
         <Picture
           src={data.cover}
           formats={['avif', 'webp']}
-          widths={large ? [640, 1100] : [480, 800]}
-          sizes={large ? '(max-width: 860px) 100vw, 600px' : '(max-width: 860px) 100vw, 360px'}
+          widths={large ? largeWidths : [480, 800]}
+          sizes={
+            large ? '(max-width: 860px) 94vw, min(62vw, 940px)' : '(max-width: 860px) 94vw, 360px'
+          }
           alt={data.coverAlt ?? ''}
         />
       ) : (
@@ -57,6 +68,10 @@ const { data } = project;
     <ul class="stack" aria-label={ui.project.stack} data-part="stack">
       {data.stack.slice(0, large ? 6 : 4).map((s) => <li class="tag">{s}</li>)}
     </ul>
+
+    <span class="card__cta">
+      Voir le projet <span class="card__arrow" aria-hidden="true">→</span>
+    </span>
   </div>
 </article>
 
@@ -122,6 +137,7 @@ const { data } = project;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
+    cursor: pointer;
     transition:
       border-color 0.25s,
       transform 0.25s;
@@ -196,11 +212,41 @@ const { data } = project;
     color: var(--text);
     text-decoration: none;
   }
-  /* Toute la carte est cliquable */
+  /* Toute la carte est cliquable (stretched link) */
   .card__link::after {
     content: '';
     position: absolute;
     inset: 0;
+    z-index: 2;
+  }
+  .card__media :global(img) {
+    transition: transform 0.45s ease;
+  }
+  .card:hover .card__media :global(img),
+  .card:focus-within .card__media :global(img) {
+    transform: scale(1.02);
+  }
+  .card__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    transition: color 0.25s;
+  }
+  .card__arrow {
+    transition: transform 0.25s ease;
+  }
+  .card:hover .card__cta,
+  .card:focus-within .card__cta {
+    color: var(--accent);
+  }
+  .card:hover .card__arrow,
+  .card:focus-within .card__arrow {
+    transform: translateX(4px);
   }
   .tagline {
     color: var(--muted);

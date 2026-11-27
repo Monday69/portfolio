@@ -1,7 +1,7 @@
 ---
 title: ColocOS
 tagline: Jumeau numérique d'une cuisine partagée — frigo 3D synchronisé à l'inventaire réel, utilisé au quotidien par ma colocation.
-order: 2
+order: 4
 status: production
 categories: [fullstack]
 stack: [React Three Fiber, Node.js, Express, Prisma, PostgreSQL, Docker]

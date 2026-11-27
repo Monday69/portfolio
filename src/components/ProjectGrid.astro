@@ -9,8 +9,8 @@ interface Props {
 }
 const { projects } = Astro.props;
 const slugOf = (p: CollectionEntry<'projects'>) => p.id.split('/').at(-1)!;
-const featured = projects.filter((p) => p.data.featured);
-const others = projects.filter((p) => !p.data.featured);
+const pad = (value: number) => String(value).padStart(2, '0');
+const total = projects.length;
 ---
 
 <section id="projets" class="section">
@@ -30,195 +30,162 @@ const others = projects.filter((p) => !p.data.featured);
     </div>
   </div>
 
-  <!-- Hors du .container : le rail épinglé occupe toute la largeur de la fenêtre -->
-  <div class="featured" data-featured>
-    <div class="featured__viewport" data-featured-viewport>
-      <div class="featured__track" data-featured-track>
-        {featured.map((p) => <ProjectCard project={p} slug={slugOf(p)} large />)}
-      </div>
+  <!-- Parcours caméra : la grille 3x2 est déplacée par un seul ScrollTrigger -->
+  <div class="camera" data-camera>
+    <div class="camera__track" data-camera-track>
+      {
+        projects.map((project) => (
+          <div class="camera__cell" data-camera-cell>
+            <ProjectCard project={project} slug={slugOf(project)} large />
+          </div>
+        ))
+      }
     </div>
-  </div>
 
-  <div class="container">
-    <div class="grid">
-      {others.map((p) => <ProjectCard project={p} slug={slugOf(p)} />)}
+    <div class="camera__hud" data-camera-hud>
+      <span class="camera__counter" data-camera-counter aria-hidden="true">
+        {pad(1)} / {pad(total)}
+      </span>
+      <div class="camera__dots">
+        {
+          projects.map((project, index) => (
+            <button
+              type="button"
+              class="camera__dot"
+              data-camera-dot={index}
+              aria-label={`Aller au projet ${pad(index + 1)} — ${project.data.title}`}
+              aria-current={index === 0 ? 'true' : 'false'}
+            />
+          ))
+        }
+      </div>
     </div>
   </div>
 </section>
 
 <script>
+  const camera = document.querySelector<HTMLElement>('[data-camera]');
+  const track = camera?.querySelector<HTMLElement>('[data-camera-track]');
+  const cells = track ? [...track.querySelectorAll<HTMLElement>('[data-camera-cell]')] : [];
+  const counter = camera?.querySelector<HTMLElement>('[data-camera-counter]');
+  const dots = camera ? [...camera.querySelectorAll<HTMLElement>('[data-camera-dot]')] : [];
+
   const filterButtons = document.querySelectorAll<HTMLButtonElement>('[data-filter]');
-  const filterables = document.querySelectorAll<HTMLElement>('[data-cats]');
 
-  const featuredRoot = document.querySelector<HTMLElement>('[data-featured]');
-  const viewport = featuredRoot?.querySelector<HTMLElement>('[data-featured-viewport]');
-  const track = featuredRoot?.querySelector<HTMLElement>('[data-featured-track]');
-  const cardEls = track ? [...track.querySelectorAll<HTMLElement>('[data-project-card]')] : [];
+  const pad = (value: number) => String(value).padStart(2, '0');
 
-  // Branché plus bas si (et seulement si) GSAP est réellement chargé.
+  // Branché par le script GSAP quand le rail est actif.
   let afterFilter: () => void = () => {};
 
   filterButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const filter = button.dataset.filter ?? 'all';
       filterButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
-      filterables.forEach((card) => {
-        const cats = card.dataset.cats?.split(' ') ?? [];
-        card.hidden = filter !== 'all' && !cats.includes(filter);
+      cells.forEach((cell) => {
+        const card = cell.querySelector<HTMLElement>('[data-cats]');
+        const cats = card?.dataset.cats?.split(' ') ?? [];
+        cell.hidden = filter !== 'all' && !cats.includes(filter);
       });
       afterFilter();
     });
   });
 
-  if (featuredRoot && viewport && track && cardEls.length > 0) {
-    const root = featuredRoot;
-    const rail = viewport;
-    const railTrack = track;
-
+  if (camera && track && cells.length > 1) {
+    const root = camera;
+    const rail = track;
     const mq = window.matchMedia('(min-width: 861px) and (prefers-reduced-motion: no-preference)');
-    type KillableTween = {
-      kill: () => void;
-      scrollTrigger?: { kill: (revert?: boolean) => void };
+    const SEGMENTS = cells.length - 1;
+
+    let started = false;
+    let teardown: () => void = () => {};
+
+    const setActive = (index: number) => {
+      const clamped = Math.min(Math.max(index, 0), SEGMENTS);
+      if (counter) counter.textContent = `${pad(clamped + 1)} / ${pad(cells.length)}`;
+      dots.forEach((dot, i) => dot.setAttribute('aria-current', String(i === clamped)));
     };
 
-    let started: Promise<void> | null = null;
+    const start = async () => {
+      if (started) return;
+      started = true;
 
-    const setup = async () => {
       const [{ gsap }, { ScrollTrigger }] = await Promise.all([
         import('gsap'),
         import('gsap/ScrollTrigger'),
       ]);
       gsap.registerPlugin(ScrollTrigger);
 
-      let tween: KillableTween | null = null;
-      let visible: HTMLElement[] = [];
-      const revealed = new Set<HTMLElement>();
-
-      const notify = (card: HTMLElement, name: string) => card.dispatchEvent(new CustomEvent(name));
-
-      /**
-       * Métriques mesurées sur la mise en page (offsetLeft/offsetWidth ignorent
-       * les transforms) : largeur de carte, pas entre deux cartes, et décalage
-       * qui amène la première carte pile au centre du rail.
-       */
-      const metrics = () => {
-        const first = visible[0];
-        const second = visible[1];
-        const cardW = first ? first.offsetWidth : rail.clientWidth;
-        const gap = first && second ? Math.max(0, second.offsetLeft - first.offsetLeft - cardW) : 0;
-        return { step: cardW + gap, start: (rail.clientWidth - cardW) / 2 };
-      };
-
-      const teardown = () => {
-        tween?.scrollTrigger?.kill(true);
-        tween?.kill();
-        tween = null;
-        visible = [];
-        revealed.clear();
-        root.classList.remove('is-featured-scroll');
-        gsap.set(railTrack, { clearProps: 'transform' });
-        gsap.set(cardEls, { clearProps: 'transform,opacity' });
-        cardEls.forEach((card) => notify(card, 'projectcard:reset'));
-      };
+      let tl: gsap.core.Timeline | null = null;
 
       const build = () => {
-        teardown();
-        if (!mq.matches) return;
+        // Tout démontage d'abord : le rail n'est actif que sur la vue complète.
+        tl?.scrollTrigger?.kill(true);
+        tl?.kill();
+        tl = null;
+        root.classList.remove('is-rail');
+        gsap.set(rail, { clearProps: 'transform' });
 
-        visible = cardEls.filter((card) => !card.hidden);
-        if (visible.length < 2) return;
+        const allVisible = cells.every((cell) => !cell.hidden);
+        if (!mq.matches || !allVisible) {
+          setActive(0);
+          ScrollTrigger.refresh();
+          return;
+        }
 
-        root.classList.add('is-featured-scroll');
+        root.classList.add('is-rail');
 
-        visible.forEach((card) => {
-          // Neutralise l'apparition générique (.reveal) : la carte est pilotée ici.
-          card.classList.add('is-visible');
-          notify(card, 'projectcard:prepare');
-        });
+        // Neutralise l'apparition générique : la carte est pilotée par le rail.
+        cells.forEach((cell) => cell.querySelector('.card')?.classList.add('is-visible'));
 
-        const total = visible.length - 1;
-
-        // Un seul timeline scrubbé : translation ET mise à l'échelle restent
-        // parfaitement solidaires de la position de scroll.
-        const tl = gsap.timeline({
+        tl = gsap.timeline({
           scrollTrigger: {
             trigger: root,
-            start: 'top top+=72',
-            end: () => `+=${metrics().step * total}`,
+            start: 'top top',
+            end: () => `+=${Math.round(window.innerHeight * 4.5)}`,
             pin: true,
-            scrub: 1,
+            scrub: 0.5,
+            anticipatePin: 1,
             invalidateOnRefresh: true,
-            onUpdate: (self) => {
-              const progress = self.progress * total;
-
-              // Une carte révèle son texte dès qu'elle commence à entrer :
-              // la carte voisine n'apparaît jamais « vide ».
-              const limit = progress + 0.9;
-              visible.forEach((card, index) => {
-                if (index > limit || revealed.has(card)) return;
-                revealed.add(card);
-                notify(card, 'projectcard:activate');
-              });
-            },
+            onUpdate: (self) => setActive(Math.round(self.progress * SEGMENTS)),
           },
         });
 
-        tween = tl;
+        // Trajet en « S » : → → ↓ ← ←
+        tl.to(rail, { xPercent: -100 / 3, ease: 'none', duration: 1 })
+          .to(rail, { xPercent: -200 / 3, ease: 'none', duration: 1 })
+          .to(rail, { yPercent: -50, ease: 'none', duration: 1 })
+          .to(rail, { xPercent: -100 / 3, ease: 'none', duration: 1 })
+          .to(rail, { xPercent: 0, ease: 'none', duration: 1 });
 
-        // Départ centré sur la première carte, puis un pas complet (carte + gap)
-        // par projet : chacune s'arrête exactement au centre du rail.
-        tl.fromTo(
-          railTrack,
-          { x: () => metrics().start },
-          {
-            x: () => metrics().start - metrics().step * total,
-            ease: 'none',
-            duration: total,
-          },
-          0,
-        );
-
-        visible.forEach((card, index) => {
-          // La carte quitte le centre : elle rétrécit et s'estompe.
-          if (index < total) {
-            tl.fromTo(
-              card,
-              { scale: 1, opacity: 1 },
-              { scale: 0.92, opacity: 0.45, ease: 'none', duration: 1 },
-              index,
-            );
-          }
-          // La carte prend la place centrale.
-          if (index > 0) {
-            tl.fromTo(
-              card,
-              { scale: 0.92, opacity: 0.45 },
-              { scale: 1, opacity: 1, ease: 'none', duration: 1 },
-              index - 1,
-            );
-          }
-        });
-
-        // La première carte est déjà à sa place : sa cascade part immédiatement.
-        const first = visible[0];
-        if (first) {
-          revealed.add(first);
-          notify(first, 'projectcard:activate');
-        }
-      };
-
-      afterFilter = () => {
-        build();
+        setActive(0);
         ScrollTrigger.refresh();
       };
 
+      dots.forEach((dot, index) => {
+        dot.addEventListener('click', () => {
+          const trigger = tl?.scrollTrigger;
+          if (!trigger) return;
+          const target = trigger.start + (trigger.end - trigger.start) * (index / SEGMENTS);
+          window.scrollTo({ top: target, behavior: 'smooth' });
+        });
+      });
+
+      afterFilter = () => build();
       mq.addEventListener('change', build);
       build();
+
+      teardown = () => {
+        tl?.scrollTrigger?.kill(true);
+        tl?.kill();
+        tl = null;
+        root.classList.remove('is-rail');
+        gsap.set(rail, { clearProps: 'transform' });
+        teardown = () => {};
+      };
+
+      window.addEventListener('pagehide', () => teardown(), { once: true });
     };
 
-    const start = () => (started ??= setup());
-
-    // GSAP n'est téléchargé que lorsqu'il peut réellement servir.
     if (mq.matches) void start();
     mq.addEventListener('change', (event) => {
       if (event.matches) void start();
@@ -253,80 +220,181 @@ const others = projects.filter((p) => !p.data.featured);
     background: var(--accent-soft);
   }
 
-  /* Empilement vertical par défaut : mobile, reduce, sans JS */
-  .featured {
+  /* Base : pile verticale (mobile, reduce, sans JS, filtre actif) */
+  .camera {
+    position: relative;
+    width: 100%;
+  }
+  .camera__track {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
     width: min(100% - 2 * var(--gutter), var(--container));
     margin-inline: auto;
+    padding-block: var(--space-3);
   }
-  .featured__track {
+  .camera__cell {
     display: grid;
-    gap: var(--space-3);
+    place-items: center;
+  }
+  .camera__cell[hidden] {
+    display: none;
+  }
+  .camera__hud {
+    display: none;
   }
 
-  /* Mode rail horizontal plein écran : la classe n'est posée que par le script desktop */
-  .featured.is-featured-scroll {
-    width: 100%;
-    margin-inline: 0;
-    height: calc(100svh - 5.5rem);
-    max-height: 820px;
-    min-height: 540px;
+  /* Rail caméra : posé par le script, desktop + motion autorisé */
+  .camera.is-rail {
+    height: 100svh;
     overflow: hidden;
   }
-  .featured.is-featured-scroll .featured__viewport {
-    height: 100%;
-    overflow: hidden;
-  }
-  .featured.is-featured-scroll .featured__track {
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-3);
-    height: 100%;
+  .camera.is-rail .camera__track {
+    width: 300%;
+    height: 200%;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    /* minmax(0, …) : des pistes strictement égales à 1/3 et 1/2, même si une
+       carte dépasse la largeur de sa cellule (sinon la piste s'élargit et le
+       centrage dérive). */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
     will-change: transform;
   }
-
-  /* Carte quasi plein écran dans le rail */
-  .featured.is-featured-scroll :global(.card--large) {
-    flex: 0 0 auto;
-    width: min(90vw, 1360px);
-    min-width: min(90vw, 1360px);
-    height: 100%;
-    transform-origin: center center;
-    /* La translation/échelle est gérée par GSAP : pas de transition CSS concurrente */
-    transition: border-color 0.25s;
+  /* Le « S » : 1-2-3 sur la ligne du haut, puis descente sur la 4, retour 5-6 */
+  .camera.is-rail .camera__cell:nth-child(1) {
+    grid-area: 1 / 1;
   }
-  .featured.is-featured-scroll :global(.card--large .card__media) {
-    flex: 0 0 54%;
-    align-self: stretch;
+  .camera.is-rail .camera__cell:nth-child(2) {
+    grid-area: 1 / 2;
+  }
+  .camera.is-rail .camera__cell:nth-child(3) {
+    grid-area: 1 / 3;
+  }
+  .camera.is-rail .camera__cell:nth-child(4) {
+    grid-area: 2 / 3;
+  }
+  .camera.is-rail .camera__cell:nth-child(5) {
+    grid-area: 2 / 2;
+  }
+  .camera.is-rail .camera__cell:nth-child(6) {
+    grid-area: 2 / 1;
+  }
+  .camera.is-rail .camera__cell {
+    /* Place réservée à la navbar (haut) et au HUD (bas) */
+    padding: clamp(4.75rem, 8vh, 5.75rem) clamp(1.25rem, 3vw, 2.5rem) clamp(4.25rem, 7.5vh, 5rem);
+  }
+  .camera.is-rail .camera__cell > :global(.card) {
+    /* 100 % = boîte de contenu de la cellule (donc toujours centrable) */
+    width: min(100%, 1520px);
+    height: clamp(560px, 74svh, 760px);
+    max-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr);
+  }
+
+  /* Visuel : cadre plein hauteur, capture entière (aucun rognage d'UI) */
+  .camera.is-rail .camera__cell > :global(.card .card__media) {
+    flex: none;
     aspect-ratio: auto;
+    align-self: stretch;
     height: 100%;
     min-height: 0;
+    padding: clamp(0.75rem, 1.4vw, 1.5rem);
+    background: var(--frame);
     border-bottom: 0;
     border-right: 1px solid var(--border);
   }
-  .featured.is-featured-scroll :global(.card--large .card__body) {
-    flex: 1;
-    justify-content: space-evenly;
-    padding: clamp(1.75rem, 3vw, 3.5rem);
-    gap: clamp(0.875rem, 1.4vw, 1.5rem);
-  }
-  .featured.is-featured-scroll :global(.card--large h3) {
-    font-size: var(--step-2);
-  }
-  .featured.is-featured-scroll :global(.card--large .tagline) {
-    font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
-    max-width: 44ch;
-  }
-  .featured.is-featured-scroll :global(.card--large .metric) {
-    font-size: 1rem;
-  }
-  .featured.is-featured-scroll :global(.card--large .metric strong) {
-    font-size: var(--step-1);
+  .camera.is-rail .camera__cell > :global(.card .card__media img) {
+    object-fit: contain;
+    object-position: center;
   }
 
-  .grid {
+  /* Colonne texte : échelle éditoriale et ancrage bas */
+  .camera.is-rail .camera__cell > :global(.card .card__body) {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: clamp(2rem, 3vw, 3.25rem);
+    gap: clamp(0.75rem, 1.2vw, 1.1rem);
+  }
+  .camera.is-rail .camera__cell > :global(.card h3) {
+    font-size: clamp(2rem, 2.8vw, 2.75rem);
+    line-height: 1.08;
+  }
+  .camera.is-rail .camera__cell > :global(.card .tagline) {
+    font-size: clamp(1rem, 1.15vw, 1.15rem);
+    line-height: 1.6;
+    max-width: 40ch;
+  }
+  .camera.is-rail .camera__cell > :global(.card .metric) {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .camera.is-rail .camera__cell > :global(.card .metric strong) {
+    font-size: clamp(1.15rem, 1.5vw, 1.5rem);
+  }
+  .camera.is-rail .camera__cell > :global(.card .stack) {
+    margin-top: auto;
+    padding-top: 1.5rem;
+  }
+
+  .camera.is-rail .camera__hud {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    position: absolute;
+    left: 50%;
+    bottom: clamp(1rem, 3vh, 2rem);
+    transform: translateX(-50%);
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgb(14 17 22 / 0.72);
+    backdrop-filter: blur(8px);
+  }
+  .camera__counter {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .camera__dots {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-    gap: var(--space-3);
-    margin-top: var(--space-3);
+    grid-template-columns: repeat(3, auto);
+    gap: 6px;
+  }
+  /* Les points suivent la trajectoire : 4 en bas à droite, 6 en bas à gauche */
+  .camera__dots > :nth-child(4) {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .camera__dots > :nth-child(5) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .camera__dots > :nth-child(6) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .camera__dot {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color 0.2s,
+      border-color 0.2s;
+  }
+  .camera__dot:hover {
+    border-color: var(--accent);
+  }
+  .camera__dot[aria-current='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
   }
 </style>
